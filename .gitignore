@@ -8,7 +8,10 @@ node_modules/
 
 # Build files
 dist/
+dist-electron/
 build/
+out/
+release/
 
 # Logs
 *.log
