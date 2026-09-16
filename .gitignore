@@ -1,38 +1,35 @@
-# Dépendances
+# Dependencies
 node_modules/
-frontend/node_modules/
-backend/node_modules/
 
-# Build
-frontend/dist/
-dist-electron/
-
-# Données locales (ne pas versionner la base de données)
-data/*.db
-data/backups/
-
-# Garder le dossier data vide dans git
-!data/.gitkeep
-!data/backups/.gitkeep
-
-# Logs
-*.log
-npm-debug.log*
-
-# Variables d'environnement
+# Environment variables
 .env
 .env.local
 .env.*.local
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
+# Build files
+dist/
+build/
 
-# IDE
+# Logs
+*.log
+logs/
+
+# Local database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Backups
+backups/
+
+# Editor files
 .vscode/
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
