@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Fond carré arrondi bleu marine -->
+  <rect width="64" height="64" rx="14" fill="#1a2f5a"/>
+
+  <!-- Boîte (colis) en teal -->
+  <!-- Face avant de la boîte -->
+  <rect x="14" y="28" width="24" height="18" rx="2" fill="#2bb5a0"/>
+  <!-- Dessus de la boîte -->
+  <polygon points="14,28 26,20 38,28 26,36" fill="#38d4bc"/>
+  <!-- Côté droit de la boîte -->
+  <polygon points="38,28 38,46 26,36 26,44" fill="#1e8c7a" opacity="0.85"/>
+  <!-- Fermeture du dessus (trait central) -->
+  <line x1="26" y1="20" x2="26" y2="36" stroke="#1a2f5a" stroke-width="1" opacity="0.4"/>
+  <line x1="14" y1="28" x2="38" y2="28" stroke="#1a2f5a" stroke-width="0.8" opacity="0.3"/>
+
+  <!-- Coche blanche sur la boîte -->
+  <polyline points="17,37 21,41 29,33" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Flèche montante orange/verte -->
+  <!-- Tige de la flèche -->
+  <line x1="36" y1="38" x2="50" y2="16" stroke="#f97316" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Tête de flèche -->
+  <polygon points="50,16 42,18 48,24" fill="#f97316"/>
+  <!-- Petite touche verte sur la base de la flèche -->
+  <circle cx="36" cy="38" r="3" fill="#22c55e"/>
+
+</svg>

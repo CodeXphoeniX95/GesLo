@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fond carré arrondi bleu marine -->
+  <rect width="512" height="512" rx="96" fill="#1a2f5a"/>
+
+  <!-- ── Boîte isométrique (colis) ── -->
+  <!-- Face avant -->
+  <polygon points="110,230 110,370 256,450 256,310" fill="#2bb5a0"/>
+  <!-- Dessus -->
+  <polygon points="110,230 256,150 402,230 256,310" fill="#4dd9c4"/>
+  <!-- Face droite -->
+  <polygon points="402,230 402,370 256,450 256,310" fill="#1e8c7a"/>
+
+  <!-- Ligne de séparation dessus -->
+  <line x1="256" y1="150" x2="256" y2="310" stroke="#1a2f5a" stroke-width="4" opacity="0.25"/>
+  <line x1="110" y1="230" x2="402" y2="230" stroke="#1a2f5a" stroke-width="3" opacity="0.2"/>
+
+  <!-- Rabat du dessus (ligne centrale) -->
+  <line x1="256" y1="150" x2="256" y2="230" stroke="#38d4bc" stroke-width="5" opacity="0.5"/>
+
+  <!-- Coche blanche sur la face avant -->
+  <polyline
+    points="148,300 192,344 290,246"
+    stroke="white"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+    opacity="0.95"
+  />
+
+  <!-- ── Flèche montante ── -->
+  <!-- Tige -->
+  <line x1="340" y1="330" x2="440" y2="120" stroke="#f97316" stroke-width="28" stroke-linecap="round"/>
+  <!-- Tête de flèche -->
+  <polygon points="440,120 390,148 418,196" fill="#f97316"/>
+  <!-- Point vert à la base -->
+  <circle cx="340" cy="330" r="22" fill="#22c55e"/>
+
+  <!-- ── Lettre G subtile en bas à droite ── -->
+  <text
+    x="400" y="480"
+    font-family="'Segoe UI', Arial, sans-serif"
+    font-size="72"
+    font-weight="800"
+    fill="white"
+    opacity="0.18"
+    text-anchor="middle"
+  >G</text>
+</svg>

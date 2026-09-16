@@ -1,0 +1,68 @@
+{
+  "name": "geslo",
+  "version": "1.0.0",
+  "description": "Application desktop de gestion pour boutiques et restaurants",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently --names \"BACK,FRONT,ELECTRON\" --prefix-colors \"cyan,magenta,yellow\" \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:electron": "wait-on http://localhost:5173 && wait-on http://localhost:3001/health && electron .",
+    "build": "npm run build:frontend && npm run build:electron",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:electron": "electron-builder --win --x64",
+    "preview": "concurrently \"npm run dev:backend\" \"npm --prefix frontend run preview\""
+  },
+  "keywords": [
+    "gestion",
+    "boutique",
+    "restaurant",
+    "caisse",
+    "stock"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.2.4",
+    "electron": "^41.7.1",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.geslo.app",
+    "productName": "GesLo",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/src/**/*",
+      "backend/package.json",
+      "data/.gitkeep"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!node_modules/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GesLo"
+    }
+  }
+}
