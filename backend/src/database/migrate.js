@@ -7,20 +7,24 @@ import bcrypt from 'bcrypt';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export function runMigrations() {
-  const db = getDb();
-  const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
-  db.exec(schema);
+  try {
+    const db = getDb();
+    const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
+    db.exec(schema);
 
-  // Migrations ALTER TABLE pour les bases existantes
-  try { db.exec('ALTER TABLE products ADD COLUMN unit_quantity INTEGER DEFAULT NULL'); } catch {}
-  try { db.exec('ALTER TABLE day_closings ADD COLUMN closed_by_name TEXT'); } catch {}
-  try { db.exec('ALTER TABLE business_settings ADD COLUMN enable_commissions INTEGER DEFAULT 0'); } catch {}
-  try { db.exec('ALTER TABLE business_settings ADD COLUMN pool_commission_rate REAL DEFAULT 0'); } catch {}
-  try { db.exec('ALTER TABLE users ADD COLUMN commission_rate REAL DEFAULT 0'); } catch {}
-  try { db.exec("ALTER TABLE users ADD COLUMN commission_type TEXT DEFAULT 'percentage'"); } catch {}
+    // Migrations ALTER TABLE pour les bases existantes
+    try { db.exec('ALTER TABLE products ADD COLUMN unit_quantity INTEGER DEFAULT NULL'); } catch {}
+    try { db.exec('ALTER TABLE day_closings ADD COLUMN closed_by_name TEXT'); } catch {}
+    try { db.exec('ALTER TABLE business_settings ADD COLUMN enable_commissions INTEGER DEFAULT 0'); } catch {}
+    try { db.exec('ALTER TABLE business_settings ADD COLUMN pool_commission_rate REAL DEFAULT 0'); } catch {}
+    try { db.exec('ALTER TABLE users ADD COLUMN commission_rate REAL DEFAULT 0'); } catch {}
+    try { db.exec("ALTER TABLE users ADD COLUMN commission_type TEXT DEFAULT 'percentage'"); } catch {}
 
-  seedInitialData(db);
-  console.log('Migrations exécutées avec succès.');
+    seedInitialData(db);
+    console.log('Migrations exécutées avec succès.');
+  } catch (err) {
+    console.error('Erreur durant les migrations SQLite:', err);
+  }
 }
 
 function seedInitialData(db) {  // Rôles

@@ -13,7 +13,7 @@ const ROLE_LABELS = {
   cashier: 'Caissier', waiter: 'Serveur',
 };
 
-export default function Sidebar() {
+export default function Sidebar({ onCloseMobile }) {
   const { user, logout } = useAuth();
   const [alertCount, setAlertCount] = useState(0);
   const isWaiter = user?.role === 'waiter';
@@ -104,6 +104,7 @@ export default function Sidebar() {
                 to={to}
                 end={to === '/'}
                 className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                onClick={onCloseMobile}
               >
                 <Icon size={16} className="sidebar-link-icon" aria-hidden="true" />
                 <span style={{ flex: 1 }}>{label}</span>

@@ -65,13 +65,15 @@ app.use(errorHandler);
 // Démarrage
 runMigrations();
 
-app.listen(PORT, '0.0.0.0', () => {
-  const ip = getLocalIP();
-  console.log(`GesLo backend démarré`);
-  console.log(`  Local   : http://127.0.0.1:${PORT}`);
-  console.log(`  Réseau  : http://${ip}:${PORT}  (autres postes du réseau)`);
-  // Démarrer le service de découverte UDP
-  startDiscoveryServer();
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    const ip = getLocalIP();
+    console.log(`GesLo backend démarré`);
+    console.log(`  Local   : http://127.0.0.1:${PORT}`);
+    console.log(`  Réseau  : http://${ip}:${PORT}  (autres postes du réseau)`);
+    // Démarrer le service de découverte UDP
+    startDiscoveryServer();
+  });
+}
 
 export default app;
