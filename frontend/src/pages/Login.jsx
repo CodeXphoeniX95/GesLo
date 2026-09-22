@@ -32,7 +32,7 @@ export default function Login() {
       <div style={styles.card}>
         {/* Logo */}
         <div style={styles.logo}>
-          <img src="/icon.ico" alt="GesLo" width="44" height="44" style={{ borderRadius: 10 }} />
+          <img src="/icon.png" alt="GesLo" width="44" height="44" style={{ borderRadius: 10 }} />
           <div>
             <h1 style={styles.appName}>GesLo</h1>
             <p style={styles.appSub}>Gestion locale</p>

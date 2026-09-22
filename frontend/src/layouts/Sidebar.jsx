@@ -85,7 +85,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="sidebar-logo">
         <div className="sidebar-logo-icon" aria-hidden="true">
-          <img src="/favicon.ico" alt="" width="28" height="28" style={{ display: 'block', borderRadius: 4 }} />
+          <img src="/icon.png" alt="" width="28" height="28" style={{ display: 'block', borderRadius: 4 }} />
         </div>
         <div className="sidebar-logo-text">
           <h1>GesLo</h1>
