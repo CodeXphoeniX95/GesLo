@@ -14,9 +14,13 @@ export function runMigrations() {
   // Migrations ALTER TABLE pour les bases existantes
   try { db.exec('ALTER TABLE products ADD COLUMN unit_quantity INTEGER DEFAULT NULL'); } catch {}
   try { db.exec('ALTER TABLE day_closings ADD COLUMN closed_by_name TEXT'); } catch {}
+  try { db.exec('ALTER TABLE business_settings ADD COLUMN enable_commissions INTEGER DEFAULT 0'); } catch {}
+  try { db.exec('ALTER TABLE business_settings ADD COLUMN pool_commission_rate REAL DEFAULT 0'); } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN commission_rate REAL DEFAULT 0'); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN commission_type TEXT DEFAULT 'percentage'"); } catch {}
 
   seedInitialData(db);
-  console.log('✅ Migrations exécutées avec succès.');
+  console.log('Migrations exécutées avec succès.');
 }
 
 function seedInitialData(db) {  // Rôles
@@ -35,7 +39,7 @@ function seedInitialData(db) {  // Rôles
     db.prepare(
       'INSERT INTO users (username, password_hash, full_name, role_id) VALUES (?, ?, ?, ?)'
     ).run('admin', hash, 'Administrateur', 1);
-    console.log('👤 Utilisateur admin créé (mot de passe : admin123)');
+    console.log('Utilisateur admin créé (mot de passe : admin123)');
   }
 
   // Paramètres par défaut

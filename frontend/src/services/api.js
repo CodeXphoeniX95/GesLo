@@ -50,6 +50,7 @@ export const authApi = {
   getUsers: () => api.get('/auth/users'),
   createUser: (data) => api.post('/auth/users', data),
   updateUserStatus: (id, data) => api.patch(`/auth/users/${id}/status`, data),
+  updateUserCommission: (id, data) => api.patch(`/auth/users/${id}/commission`, data),
   getRoles: () => api.get('/auth/roles'),
 };
 
@@ -128,6 +129,7 @@ export const reportsApi = {
   getSales: (params) => api.get('/reports/sales', { params }),
   getStock: () => api.get('/reports/stock'),
   getExpenses: (params) => api.get('/reports/expenses', { params }),
+  getCommissions: (params) => api.get('/reports/commissions', { params }),
   getSettings: () => api.get('/reports/settings'),
   updateSettings: (data) => api.put('/reports/settings', data),
 };

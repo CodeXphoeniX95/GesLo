@@ -13,13 +13,7 @@
     "build:electron": "electron-builder --win --x64",
     "preview": "concurrently \"npm run dev:backend\" \"npm --prefix frontend run preview\""
   },
-  "keywords": [
-    "gestion",
-    "boutique",
-    "restaurant",
-    "caisse",
-    "stock"
-  ],
+  "keywords": ["gestion", "boutique", "restaurant", "caisse", "stock"],
   "author": "",
   "license": "ISC",
   "devDependencies": {
@@ -36,25 +30,20 @@
     },
     "files": [
       "electron/**/*",
-      "frontend/dist/**/*",
-      "backend/src/**/*",
-      "backend/package.json",
-      "data/.gitkeep"
+      "frontend/dist/**/*"
     ],
     "extraResources": [
       {
         "from": "backend",
-        "to": "backend",
-        "filter": [
-          "**/*",
-          "!node_modules/**"
-        ]
+        "to": "backend"
+      },
+      {
+        "from": "C:/nvm4w/nodejs/node.exe",
+        "to": "../node.exe"
       }
     ],
     "win": {
-      "target": [
-        "nsis"
-      ],
+      "target": ["nsis"],
       "icon": "build/icon.ico"
     },
     "nsis": {

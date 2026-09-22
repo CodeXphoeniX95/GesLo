@@ -17,7 +17,11 @@ export default function Login() {
       await login(form.username, form.password);
       navigate('/');
     } catch (err) {
-      error(err.response?.data?.error || 'Connexion impossible. Vérifiez vos identifiants.');
+      if (!err.response) {
+        error('Impossible de joindre le serveur local (port 3001). Vérifiez que le backend est démarré.');
+      } else {
+        error(err.response?.data?.error || 'Nom d\'utilisateur ou mot de passe incorrect.');
+      }
     } finally {
       setLoading(false);
     }

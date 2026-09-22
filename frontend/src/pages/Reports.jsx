@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart2, Package, Receipt, TrendingUp, AlertTriangle, DollarSign, Download } from 'lucide-react';
+import { BarChart2, Package, Receipt, TrendingUp, AlertTriangle, DollarSign, Download, Users, Award, ShieldCheck } from 'lucide-react';
 import { reportsApi } from '../services/api';
 import { exportSalesCSV, exportStockCSV, exportExpensesCSV } from '../utils/export';
 import { exportSalesPDF, exportStockPDF, exportExpensesPDF } from '../utils/exportPDF';
@@ -40,12 +40,14 @@ export default function Reports() {
   const [salesData, setSalesData] = useState(null);
   const [stockData, setStockData] = useState(null);
   const [expensesData, setExpensesData] = useState(null);
+  const [commissionsData, setCommissionsData] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
   const firstOfMonth = `${today.slice(0, 7)}-01`;
   const [salesFilter, setSalesFilter] = useState({ start_date: firstOfMonth, end_date: today });
   const [expFilter, setExpFilter] = useState({ start_date: firstOfMonth, end_date: today });
+  const [commFilter, setCommFilter] = useState({ start_date: firstOfMonth, end_date: today });
 
   useEffect(() => {
     if (tab === 'sales') {
@@ -60,7 +62,11 @@ export default function Reports() {
       setLoading(true);
       reportsApi.getExpenses(expFilter).then((r) => setExpensesData(r.data)).finally(() => setLoading(false));
     }
-  }, [tab, salesFilter, expFilter]);
+    if (tab === 'commissions') {
+      setLoading(true);
+      reportsApi.getCommissions(commFilter).then((r) => setCommissionsData(r.data)).finally(() => setLoading(false));
+    }
+  }, [tab, salesFilter, expFilter, commFilter]);
 
   return (
     <>
@@ -68,10 +74,11 @@ export default function Reports() {
         <h1 className="page-header-title">Rapports</h1>
       </div>
 
-      <div style={{ borderBottom: '1px solid var(--gray-200)', display: 'flex' }}>
+      <div style={{ borderBottom: '1px solid var(--gray-200)', display: 'flex', flexWrap: 'wrap' }}>
         <TabButton active={tab === 'sales'} onClick={() => setTab('sales')} icon={BarChart2}>Ventes</TabButton>
         <TabButton active={tab === 'stock'} onClick={() => setTab('stock')} icon={Package}>Stock</TabButton>
         <TabButton active={tab === 'expenses'} onClick={() => setTab('expenses')} icon={Receipt}>Dépenses</TabButton>
+        <TabButton active={tab === 'commissions'} onClick={() => setTab('commissions')} icon={Award}>Commissions</TabButton>
       </div>
 
       {loading && <Spinner />}
@@ -107,10 +114,11 @@ export default function Reports() {
           {salesData && (
             <>
               <div className="stats-grid">
-                <StatCard icon={DollarSign} label="Chiffre d'affaires" value={fmt(salesData.summary?.revenue)}
+                <StatCard icon={DollarSign} label="Chiffre d'affaires brut" value={fmt(salesData.summary?.revenue)}
                   sub={`${salesData.summary?.count} ventes`} colorClass="blue" />
-                <StatCard icon={TrendingUp} label="Bénéfice estimé" value={fmt(salesData.summary?.profit)} colorClass="green" />
-                <StatCard icon={Receipt} label="Remises accordées" value={fmt(salesData.summary?.total_discount)} colorClass="yellow" />
+                <StatCard icon={Receipt} label="Dépenses déduites" value={fmt(salesData.summary?.expenses)} colorClass="yellow" />
+                <StatCard icon={Award} label="Total Commissions" value={fmt(salesData.summary?.commissions?.total_commissions)} colorClass="purple" />
+                <StatCard icon={TrendingUp} label="Bénéfice Net Réel" value={fmt(salesData.summary?.net_profit)} sub="Après dépenses et commissions" colorClass="green" />
               </div>
 
               <div className="dashboard-grid">
@@ -314,6 +322,159 @@ export default function Reports() {
                           <td><strong>{row.total?.toLocaleString('fr-FR')} FCFA</strong></td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Commissions ── */}
+      {tab === 'commissions' && !loading && commissionsData && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="filters-bar">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Du</label>
+              <input className="form-control" type="date" value={commFilter.start_date}
+                onChange={(e) => setCommFilter((f) => ({ ...f, start_date: e.target.value }))} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Au</label>
+              <input className="form-control" type="date" value={commFilter.end_date}
+                onChange={(e) => setCommFilter((f) => ({ ...f, end_date: e.target.value }))} />
+            </div>
+          </div>
+
+          {commissionsData.is_admin ? (
+            /* Vue Administrateur */
+            <>
+              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <StatCard icon={TrendingUp} label="Bénéfice Net Global" value={fmt(commissionsData.financials?.net_profit)} sub="CA - Achats - Dépenses" colorClass="green" />
+                <StatCard icon={Award} label="Commissions Vendeurs" value={fmt(commissionsData.totals?.total_user_commissions)} colorClass="purple" />
+                <StatCard icon={Users} label="Pool Collectif" value={fmt(commissionsData.totals?.total_pool_commissions)} colorClass="blue" />
+                <StatCard icon={DollarSign} label="Part Boutique / Caisse" value={fmt(commissionsData.totals?.total_caisse_net)} sub="Bénéfice Net Restant" colorClass="cyan" />
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title">Récapitulatif des commissions par membre</span></div>
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Membre</th>
+                        <th>Identifiant</th>
+                        <th>Ventes</th>
+                        <th>Chiffre d&apos;affaires</th>
+                        <th>Bénéfice généré</th>
+                        <th>Commission acquise</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commissionsData.by_user?.length === 0 ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--gray-400)' }}>Aucune commission enregistrée sur cette période.</td></tr>
+                      ) : (
+                        commissionsData.by_user?.map((u) => (
+                          <tr key={u.user_id}>
+                            <td><strong>{u.full_name}</strong></td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{u.username}</td>
+                            <td>{u.sale_count}</td>
+                            <td>{fmt(u.total_sales)}</td>
+                            <td>{fmt(u.total_profit)}</td>
+                            <td><strong style={{ color: 'var(--primary)' }}>{fmt(u.total_commission)}</strong></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title">Historique détaillé des commissions</span></div>
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>N° Vente</th>
+                        <th>Vendeur</th>
+                        <th>Date</th>
+                        <th>Vente</th>
+                        <th>Bénéfice</th>
+                        <th>Comm. Vendeur</th>
+                        <th>Comm. Pool</th>
+                        <th>Caisse Nette</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commissionsData.detail?.length === 0 ? (
+                        <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--gray-400)' }}>Aucun enregistrement.</td></tr>
+                      ) : (
+                        commissionsData.detail?.map((row) => (
+                          <tr key={row.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{row.sale_number}</td>
+                            <td>{row.user_name}</td>
+                            <td style={{ fontSize: '0.8rem' }}>{new Date(row.created_at).toLocaleString('fr-FR')}</td>
+                            <td>{fmt(row.sale_total)}</td>
+                            <td>{fmt(row.sale_profit)}</td>
+                            <td><strong style={{ color: 'var(--primary)' }}>{fmt(row.user_commission)}</strong></td>
+                            <td><span className="badge badge-info">{fmt(row.pool_commission)}</span></td>
+                            <td><strong>{fmt(row.caisse_net)}</strong></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Vue Utilisateur Simple (CONFIDENTIALITÉ STRICTE : Uniquement ses propres commissions) */
+            <>
+              <div style={{
+                background: 'var(--primary-bg)', border: '1px solid var(--primary-light)',
+                borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <ShieldCheck size={20} style={{ color: 'var(--primary)' }} />
+                <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--primary-dark)', fontWeight: 600 }}>
+                  Espace Personnel : Vos données de commissions sont strictement confidentielles.
+                </span>
+              </div>
+
+              <div className="stats-grid">
+                <StatCard icon={Award} label="Mes Commissions acquises" value={fmt(commissionsData.totals?.my_total_commission)} colorClass="purple" />
+                <StatCard icon={BarChart2} label="Mes Ventes réalisées" value={`${commissionsData.totals?.my_sale_count || 0} ventes`} colorClass="blue" />
+                <StatCard icon={DollarSign} label="Volume des Ventes" value={fmt(commissionsData.totals?.my_total_sales)} colorClass="green" />
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title">Historique de mes commissions</span></div>
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>N° Vente</th>
+                        <th>Date</th>
+                        <th>Montant Vente</th>
+                        <th>Bénéfice généré</th>
+                        <th>Ma Commission</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {commissionsData.detail?.length === 0 ? (
+                        <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--gray-400)' }}>Aucune commission sur cette période.</td></tr>
+                      ) : (
+                        commissionsData.detail?.map((row) => (
+                          <tr key={row.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{row.sale_number}</td>
+                            <td style={{ fontSize: '0.8rem' }}>{new Date(row.created_at).toLocaleString('fr-FR')}</td>
+                            <td>{fmt(row.sale_total)}</td>
+                            <td>{fmt(row.sale_profit)}</td>
+                            <td><strong style={{ color: 'var(--primary)', fontSize: '1rem' }}>{fmt(row.user_commission)}</strong></td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

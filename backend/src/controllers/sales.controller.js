@@ -114,6 +114,7 @@ export function createSale(req, res) {
 
     const saleId = saleResult.lastInsertRowid;
 
+    let saleProfit = 0;
     for (const item of enrichedItems) {
       db.prepare(
         `INSERT INTO sale_items
@@ -121,6 +122,8 @@ export function createSale(req, res) {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(saleId, item.product_id, item.product_name, item.quantity,
         item.unit_price, item.purchase_price, item.discount, item.total);
+
+      saleProfit += (item.unit_price - item.purchase_price) * item.quantity - item.discount;
 
       const newQty = item.stock_before - item.quantity;
       db.prepare('UPDATE products SET stock_quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
@@ -131,6 +134,34 @@ export function createSale(req, res) {
          (product_id, type, quantity, quantity_before, quantity_after, reference_id, reference_type, user_id)
          VALUES (?, 'sale', ?, ?, ?, ?, 'sale', ?)`
       ).run(item.product_id, -item.quantity, item.stock_before, newQty, saleId, req.user.id);
+    }
+
+    // Traçabilité des commissions (si activé)
+    if (settings?.enable_commissions) {
+      const seller = db.prepare('SELECT commission_rate, commission_type FROM users WHERE id = ?').get(req.user.id);
+      let userCommission = 0;
+      if (seller && seller.commission_rate > 0) {
+        if (seller.commission_type === 'fixed') {
+          userCommission = seller.commission_rate;
+        } else {
+          userCommission = Math.max(0, (saleProfit * seller.commission_rate) / 100);
+        }
+      }
+
+      let poolCommission = 0;
+      const poolRate = settings.pool_commission_rate || 0;
+      if (poolRate > 0) {
+        poolCommission = Math.max(0, (saleProfit * poolRate) / 100);
+      }
+
+      const totalCommission = userCommission + poolCommission;
+      const caisseNet = total - totalCommission;
+
+      db.prepare(
+        `INSERT INTO sale_commissions
+         (sale_id, user_id, sale_total, sale_profit, user_commission, pool_commission, total_commission, caisse_net)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(saleId, req.user.id, total, saleProfit, userCommission, poolCommission, totalCommission, caisseNet);
     }
 
     // Mettre à jour les stats client
@@ -190,6 +221,9 @@ export function cancelSale(req, res) {
       ).run(item.product_id, item.quantity, product.stock_quantity, newQty, id,
         `Annulation vente ${sale.sale_number}`, req.user.id);
     }
+
+    // Supprimer les commissions annulées
+    db.prepare('DELETE FROM sale_commissions WHERE sale_id = ?').run(id);
 
     db.prepare(
       'INSERT INTO audit_log (user_id, action, entity, entity_id, details) VALUES (?, ?, ?, ?, ?)'

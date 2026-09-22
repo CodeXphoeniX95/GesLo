@@ -202,7 +202,9 @@ export default function Settings() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [userModal, setUserModal] = useState(false);
-  const [newUser, setNewUser] = useState({ username: '', password: '', full_name: '', role: 'cashier' });
+  const [newUser, setNewUser] = useState({ username: '', password: '', full_name: '', role: 'cashier', commission_rate: 0, commission_type: 'percentage' });
+  const [editCommModal, setEditCommModal] = useState(false);
+  const [selectedUserForComm, setSelectedUserForComm] = useState(null);
   const [pwdModal, setPwdModal] = useState(false);
   const [pwdForm, setPwdForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const toast = useToast();
@@ -247,6 +249,20 @@ export default function Settings() {
     try {
       await authApi.updateUserStatus(user.id, { is_active: user.is_active ? 0 : 1 });
       toast.success(user.is_active ? 'Utilisateur désactivé.' : 'Utilisateur activé.');
+      authApi.getUsers().then((r) => setUsers(r.data));
+    } catch (err) { toast.error(err.response?.data?.error || 'Erreur.'); }
+  };
+
+  const handleSaveUserCommission = async (e) => {
+    e.preventDefault();
+    if (!selectedUserForComm) return;
+    try {
+      await authApi.updateUserCommission(selectedUserForComm.id, {
+        commission_rate: selectedUserForComm.commission_rate,
+        commission_type: selectedUserForComm.commission_type,
+      });
+      toast.success('Taux de commission mis à jour.');
+      setEditCommModal(false);
       authApi.getUsers().then((r) => setUsers(r.data));
     } catch (err) { toast.error(err.response?.data?.error || 'Erreur.'); }
   };
@@ -361,6 +377,46 @@ export default function Settings() {
             </div>
           </div>
 
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="card-header">
+              <span className="card-title">Mode Commissions sur Ventes</span>
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={!!settings.enable_commissions}
+                  onChange={(e) => set('enable_commissions', e.target.checked)}
+                />
+                Activer le système de commissions pour l&apos;équipe
+              </label>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4, marginLeft: 24 }}>
+                Calcul automatique des commissions des vendeurs et du pool d&apos;équipe prélevées sur le bénéfice brut des ventes.
+              </p>
+            </div>
+
+            {settings.enable_commissions && (
+              <div className="form-row" style={{ marginTop: 12 }}>
+                <div className="form-group">
+                  <label className="form-label">Taux du Pool collectif (%)</label>
+                  <input
+                    className="form-control"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={settings.pool_commission_rate || 0}
+                    onChange={(e) => set('pool_commission_rate', e.target.value)}
+                    placeholder="2.0"
+                  />
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4 }}>
+                    Pourcentage prélevé sur le bénéfice de chaque vente et réservé au pool d&apos;équipe.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ marginTop: 16 }}>
             <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
               <Save size={16} /> {saving ? 'Enregistrement…' : 'Sauvegarder'}
@@ -372,6 +428,45 @@ export default function Settings() {
       {/* ── Utilisateurs ── */}
       {tab === 'users' && isAdmin && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Clé de répartition du Bénéfice Net */}
+          {(() => {
+            const usersCommSum = users.reduce((sum, u) => sum + (u.is_active && u.commission_type !== 'fixed' ? Number(u.commission_rate || 0) : 0), 0);
+            const poolCommRate = Number(settings?.pool_commission_rate || 0);
+            const allocatedTotal = usersCommSum + poolCommRate;
+            const boutiqueShare = Math.max(0, 100 - allocatedTotal);
+            return (
+              <div className="card" style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)' }}>
+                <div className="card-header">
+                  <span className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Clé de Répartition du Bénéfice Net (Total : 100%)
+                  </span>
+                  <span className={`badge badge-${allocatedTotal > 100 ? 'danger' : 'success'}`}>
+                    {allocatedTotal > 100 ? `Total (${allocatedTotal.toFixed(1)}%) > 100%` : `Total attribué : ${allocatedTotal.toFixed(1)}%`}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 8 }}>
+                  <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Membres / Équipe ({users.filter(u=>u.is_active).length})</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>{usersCommSum.toFixed(1)} %</div>
+                  </div>
+                  <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Pool Collectif</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0284c7', marginTop: 2 }}>{poolCommRate.toFixed(1)} %</div>
+                  </div>
+                  <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Part Boutique / Caisse</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#16a34a', marginTop: 2 }}>{boutiqueShare.toFixed(1)} %</div>
+                  </div>
+                </div>
+                {allocatedTotal > 100 && (
+                  <p style={{ color: 'var(--danger)', fontSize: 'var(--font-size-xs)', marginTop: 8, fontWeight: 600 }}>
+                    La somme des commissions des membres et du pool dépasse 100%. Veuillez réajuster les taux.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn-primary" onClick={() => setUserModal(true)}>
               <Plus size={15} /> Nouvel utilisateur
@@ -381,7 +476,14 @@ export default function Settings() {
             <div className="table-wrapper">
               <table>
                 <thead>
-                  <tr><th>Nom complet</th><th>Identifiant</th><th>Rôle</th><th>Statut</th><th>Actions</th></tr>
+                  <tr>
+                    <th>Nom complet</th>
+                    <th>Identifiant</th>
+                    <th>Rôle</th>
+                    <th>Taux Commission</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
@@ -389,8 +491,19 @@ export default function Settings() {
                       <td><strong>{u.full_name}</strong></td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{u.username}</td>
                       <td><span className="badge badge-primary">{ROLE_LABELS[u.role] || u.role}</span></td>
-                      <td><span className={`badge badge-${u.is_active ? 'success' : 'gray'}`}>{u.is_active ? 'Actif' : 'Inactif'}</span></td>
                       <td>
+                        <span className="badge badge-info" style={{ fontWeight: 600 }}>
+                          {u.commission_rate || 0} {u.commission_type === 'fixed' ? (settings?.currency_symbol || 'FCFA') : '%'}
+                        </span>
+                      </td>
+                      <td><span className={`badge badge-${u.is_active ? 'success' : 'gray'}`}>{u.is_active ? 'Actif' : 'Inactif'}</span></td>
+                      <td style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => { setSelectedUserForComm(u); setEditCommModal(true); }}
+                        >
+                          Commission
+                        </button>
                         <button className="btn btn-ghost btn-sm"
                           style={{ color: u.is_active ? 'var(--warning)' : 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}
                           onClick={() => handleToggleUser(u)}>
@@ -523,11 +636,79 @@ export default function Settings() {
               {roles.map((r) => <option key={r.id} value={r.name}>{ROLE_LABELS[r.name] || r.name}</option>)}
             </select>
           </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Taux de commission</label>
+              <input className="form-control" type="number" step="0.1" min="0" value={newUser.commission_rate}
+                onChange={(e) => setNewUser({ ...newUser, commission_rate: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Type de commission</label>
+              <select className="form-control" value={newUser.commission_type}
+                onChange={(e) => setNewUser({ ...newUser, commission_type: e.target.value })}>
+                <option value="percentage">Pourcentage (%)</option>
+                <option value="fixed">Montant fixe ({settings?.currency_symbol || 'FCFA'})</option>
+              </select>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-secondary" onClick={() => setUserModal(false)}>Annuler</button>
             <button type="submit" className="btn btn-primary"><Plus size={14} /> Créer</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal éditer commission utilisateur */}
+      <Modal isOpen={editCommModal} onClose={() => setEditCommModal(false)} title="Taux de commission membre">
+        {selectedUserForComm && (
+          <form onSubmit={handleSaveUserCommission}>
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontWeight: 600, margin: 0 }}>{selectedUserForComm.full_name}</p>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', margin: 0 }}>
+                Identifiant : {selectedUserForComm.username}
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Type de commission</label>
+              <select
+                className="form-control"
+                value={selectedUserForComm.commission_type || 'percentage'}
+                onChange={(e) => setSelectedUserForComm({ ...selectedUserForComm, commission_type: e.target.value })}
+              >
+                <option value="percentage">Pourcentage sur le bénéfice (%)</option>
+                <option value="fixed">Montant fixe par vente ({settings?.currency_symbol || 'FCFA'})</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Taux / Valeur ({selectedUserForComm.commission_type === 'fixed' ? (settings?.currency_symbol || 'FCFA') : '%'})
+              </label>
+              <input
+                className="form-control"
+                type="number"
+                step="0.1"
+                min="0"
+                max={selectedUserForComm.commission_type === 'fixed' ? undefined : 100}
+                required
+                value={selectedUserForComm.commission_rate ?? 0}
+                onChange={(e) => {
+                  let val = parseFloat(e.target.value);
+                  if (isNaN(val)) val = 0;
+                  if (selectedUserForComm.commission_type !== 'fixed' && val > 100) val = 100;
+                  if (val < 0) val = 0;
+                  setSelectedUserForComm({ ...selectedUserForComm, commission_rate: val });
+                }}
+              />
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4 }}>
+                Calculé directement sur le bénéfice brut généré par les ventes de ce membre.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditCommModal(false)}>Annuler</button>
+              <button type="submit" className="btn btn-primary"><Save size={14} /> Enregistrer</button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* Modal changer mot de passe */}

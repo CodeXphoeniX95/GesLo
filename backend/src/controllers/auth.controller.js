@@ -76,14 +76,14 @@ export function changePassword(req, res) {
 export function getUsers(req, res) {
   const db = getDb();
   const users = db.prepare(
-    `SELECT u.id, u.username, u.full_name, u.is_active, u.created_at, r.name AS role
+    `SELECT u.id, u.username, u.full_name, u.commission_rate, u.commission_type, u.is_active, u.created_at, r.name AS role
      FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.created_at DESC`
   ).all();
   res.json(users);
 }
 
 export function createUser(req, res) {
-  const { username, password, full_name, role } = req.body;
+  const { username, password, full_name, role, commission_rate = 0, commission_type = 'percentage' } = req.body;
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: 'Tous les champs sont requis.' });
   }
@@ -100,11 +100,47 @@ export function createUser(req, res) {
 
   const hash = bcrypt.hashSync(password, 10);
   const result = db.prepare(
-    'INSERT INTO users (username, password_hash, full_name, role_id) VALUES (?, ?, ?, ?)'
-  ).run(username, hash, full_name, roleRow.id);
+    'INSERT INTO users (username, password_hash, full_name, role_id, commission_rate, commission_type) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(username, hash, full_name, roleRow.id, Number(commission_rate) || 0, commission_type || 'percentage');
 
   auditLog(db, req.user.id, 'CREATE_USER', 'users', result.lastInsertRowid, { username });
   res.status(201).json({ id: result.lastInsertRowid, message: 'Utilisateur créé.' });
+}
+
+export function updateUserCommission(req, res) {
+  const { id } = req.params;
+  const { commission_rate, commission_type } = req.body;
+  let rate = Number(commission_rate) || 0;
+  const type = commission_type || 'percentage';
+
+  if (type === 'percentage' && (rate < 0 || rate > 100)) {
+    return res.status(400).json({ error: 'Le pourcentage de commission doit être compris entre 0 et 100%.' });
+  }
+
+  const db = getDb();
+
+  if (type === 'percentage') {
+    const settings = db.prepare('SELECT pool_commission_rate FROM business_settings LIMIT 1').get();
+    const poolRate = Number(settings?.pool_commission_rate || 0);
+
+    const otherUsersSum = db.prepare(
+      "SELECT COALESCE(SUM(commission_rate), 0) AS total FROM users WHERE id != ? AND is_active = 1 AND commission_type = 'percentage'"
+    ).get(id);
+
+    const totalAllocated = otherUsersSum.total + poolRate + rate;
+    if (totalAllocated > 100) {
+      return res.status(400).json({
+        error: `Impossible d'enregistrer : la somme des commissions (${totalAllocated.toFixed(1)}%) dépasserait 100%.`
+      });
+    }
+  }
+
+  db.prepare(
+    'UPDATE users SET commission_rate = ?, commission_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+  ).run(rate, type, id);
+
+  auditLog(db, req.user.id, 'UPDATE_USER_COMMISSION', 'users', id, { commission_rate: rate, commission_type: type });
+  res.json({ message: 'Taux de commission mis à jour.' });
 }
 
 export function updateUserStatus(req, res) {

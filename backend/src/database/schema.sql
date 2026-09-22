@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   full_name TEXT NOT NULL,
   role_id INTEGER NOT NULL,
+  commission_rate REAL DEFAULT 0,
+  commission_type TEXT DEFAULT 'percentage',
   is_active INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -37,6 +39,8 @@ CREATE TABLE IF NOT EXISTS business_settings (
   logo_path TEXT,
   tax_rate REAL DEFAULT 0,
   allow_negative_stock INTEGER DEFAULT 0,
+  enable_commissions INTEGER DEFAULT 0,
+  pool_commission_rate REAL DEFAULT 0,
   receipt_footer TEXT DEFAULT 'Merci de votre visite !',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -300,4 +304,20 @@ CREATE TABLE IF NOT EXISTS day_closings (
   closed_by INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (closed_by) REFERENCES users(id)
+);
+
+-- Traçabilité des commissions sur les ventes
+CREATE TABLE IF NOT EXISTS sale_commissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_id INTEGER NOT NULL UNIQUE,
+  user_id INTEGER NOT NULL,
+  sale_total REAL NOT NULL DEFAULT 0,
+  sale_profit REAL NOT NULL DEFAULT 0,
+  user_commission REAL NOT NULL DEFAULT 0,
+  pool_commission REAL NOT NULL DEFAULT 0,
+  total_commission REAL NOT NULL DEFAULT 0,
+  caisse_net REAL NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (sale_id) REFERENCES sales(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
 );
