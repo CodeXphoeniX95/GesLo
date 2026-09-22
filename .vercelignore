@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+dist-electron
+.git
+data
+*.db
+*.db-wal
+*.db-shm
+backups
