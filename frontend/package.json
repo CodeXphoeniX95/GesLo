@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "axios": "^1.20.0",
+    "geslo": "file:..",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",

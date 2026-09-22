@@ -11,6 +11,7 @@
     "build": "npm run build:frontend && npm run build:electron",
     "build:frontend": "npm --prefix frontend run build",
     "build:electron": "electron-builder --win --x64",
+    "vercel-build": "npm --prefix backend install && npm --prefix frontend install && npm run build:frontend",
     "preview": "concurrently \"npm run dev:backend\" \"npm --prefix frontend run preview\""
   },
   "keywords": ["gestion", "boutique", "restaurant", "caisse", "stock"],

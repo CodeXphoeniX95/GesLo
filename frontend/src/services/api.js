@@ -1,11 +1,15 @@
 import axios from 'axios';
 
 // Détection automatique de l'URL du backend
-// - En dev Vite (localhost) → 127.0.0.1:3001
-// - Sur un autre poste du réseau (IP locale) → même hostname, port 3001
-// - Dans Electron (file://) → 127.0.0.1:3001
+// - Sur Vercel ou domaine Web (.vercel.app, etc.) → /api (relatif)
+// - En dev Vite (localhost) / Electron → 127.0.0.1:3001
+// - Sur un autre poste du réseau (IP locale LAN) → même hostname, port 3001
 function getBaseURL() {
   const hostname = window.location.hostname;
+  // Hébergement Web / Vercel (si sur vercel.app ou domaine web public)
+  if (hostname && !hostname.includes('localhost') && !hostname.includes('127.0.0.1') && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+    return '/api';
+  }
   // Electron ou localhost
   if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://127.0.0.1:3001/api';
