@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Plus, Minus, Trash2, Eye, XCircle,
   ShoppingCart, Search, CheckCircle, Printer,
@@ -463,7 +463,6 @@ function CashRegister({ products, customers, onSale, onClose }) {
 // ─── Page principale ─────────────────────────────────────────────
 export default function Sales() {
   const [sales, setSales] = useState([]);
-  const [filteredSales, setFilteredSales] = useState([]);
   const [salesSearch, setSalesSearch] = useState('');
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
@@ -490,7 +489,6 @@ export default function Sales() {
     salesApi.getAll(params)
       .then((res) => {
         setSales(res.data);
-        setFilteredSales(res.data);
       }).finally(() => setLoading(false));
   }, [filterStart, filterEnd, filterUser]);
 
@@ -503,15 +501,15 @@ export default function Sales() {
     authApi.getUsers().then((r) => setUsers(r.data)).catch(() => {});
   }, [load]);
 
-  // Filtre texte local (après chargement)
-  useEffect(() => {
-    if (!salesSearch) { setFilteredSales(sales); return; }
+  // Filtre texte local (mémorisé pour éviter les rendus en cascade)
+  const filteredSales = useMemo(() => {
+    if (!salesSearch) return sales;
     const q = salesSearch.toLowerCase();
-    setFilteredSales(sales.filter((s) =>
+    return sales.filter((s) =>
       (s.sale_number || '').toLowerCase().includes(q) ||
       (s.cashier_name || '').toLowerCase().includes(q) ||
       (s.customer_name || '').toLowerCase().includes(q)
-    ));
+    );
   }, [salesSearch, sales]);
 
   const handleSale = async (data) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Tag, Search } from 'lucide-react';
 import { categoriesApi } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -59,7 +59,6 @@ function CategoryForm({ initial, onSubmit, onClose }) {
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
-  const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
@@ -71,17 +70,16 @@ export default function Categories() {
     setLoading(true);
     categoriesApi.getAll().then((res) => {
       setCategories(res.data);
-      setFiltered(res.data);
     }).finally(() => setLoading(false));
   };
   useEffect(load, []);
 
-  useEffect(() => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    setFiltered(categories.filter((c) =>
+    return categories.filter((c) =>
       c.name.toLowerCase().includes(q) ||
       (c.description || '').toLowerCase().includes(q)
-    ));
+    );
   }, [search, categories]);
 
   const handleCreate = async (data) => {

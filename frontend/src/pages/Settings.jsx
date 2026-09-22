@@ -219,14 +219,14 @@ export default function Settings() {
   }, [isAdmin]);
 
   useEffect(() => {
-    if (tab === 'audit' && isAdmin && auditLogs.length === 0) {
+    if (tab === 'audit' && isAdmin) {
       setLoadingAudit(true);
       auditApi.getAll({ limit: 200 })
         .then((r) => setAuditLogs(r.data))
         .catch(() => {})
         .finally(() => setLoadingAudit(false));
     }
-  }, [tab, isAdmin, auditLogs.length]);
+  }, [tab, isAdmin]);
 
   const handleSaveSettings = async (e) => {
     e.preventDefault(); setSaving(true);
