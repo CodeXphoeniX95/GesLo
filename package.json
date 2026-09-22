@@ -1,6 +1,7 @@
 {
   "name": "geslo",
   "version": "1.0.0",
+  "type": "module",
   "description": "Application desktop de gestion pour boutiques et restaurants",
   "main": "electron/main.js",
   "scripts": {
