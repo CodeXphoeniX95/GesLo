@@ -321,3 +321,77 @@ CREATE TABLE IF NOT EXISTS sale_commissions (
   FOREIGN KEY (sale_id) REFERENCES sales(id),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- Licence & Abonnement (1 An)
+CREATE TABLE IF NOT EXISTS license_info (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  license_key TEXT NOT NULL,
+  activated_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  last_checked_at DATETIME NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- Module Rémunérations / Commissions
+-- ============================================================
+
+-- Configuration des taux de commission par utilisateur
+CREATE TABLE IF NOT EXISTS commission_configs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  rate REAL NOT NULL DEFAULT 0 CHECK(rate >= 0 AND rate <= 100),
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Configuration du pool (fonds commun)
+CREATE TABLE IF NOT EXISTS pool_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL DEFAULT 'Pool',
+  rate REAL NOT NULL DEFAULT 0 CHECK(rate >= 0 AND rate <= 100),
+  description TEXT,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Périodes de rémunération calculées et validées
+CREATE TABLE IF NOT EXISTS commission_periods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  total_revenue REAL DEFAULT 0,
+  total_cost REAL DEFAULT 0,
+  gross_profit REAL DEFAULT 0,
+  operational_expenses REAL DEFAULT 0,
+  profit_before_commissions REAL DEFAULT 0,
+  total_commissions REAL DEFAULT 0,
+  pool_amount REAL DEFAULT 0,
+  net_profit REAL DEFAULT 0,
+  status TEXT DEFAULT 'draft' CHECK(status IN ('draft','validated')),
+  validated_by INTEGER,
+  validated_at DATETIME,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (validated_by) REFERENCES users(id),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Détail des commissions par vendeur pour chaque période
+CREATE TABLE IF NOT EXISTS commission_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  period_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  user_name TEXT NOT NULL,
+  sales_count INTEGER DEFAULT 0,
+  sales_revenue REAL DEFAULT 0,
+  rate REAL NOT NULL DEFAULT 0,
+  amount REAL NOT NULL DEFAULT 0,
+  expense_id INTEGER,
+  FOREIGN KEY (period_id) REFERENCES commission_periods(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (expense_id) REFERENCES expenses(id)
+);

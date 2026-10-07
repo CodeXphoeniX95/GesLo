@@ -27,7 +27,7 @@ export default function Backup() {
   const loadBackups = useCallback(() => {
     setLoading(true);
     backupApi.list()
-      .then((res) => setBackups(res.data))
+      .then((res) => setBackups(Array.isArray(res.data) ? res.data : []))
       .catch(() => setBackups([]))
       .finally(() => setLoading(false));
   }, []);
@@ -188,7 +188,7 @@ export default function Backup() {
                 </tr>
               </thead>
               <tbody>
-                {backups.map((b) => (
+                {(Array.isArray(backups) ? backups : []).map((b) => (
                   <tr key={b.filename}
                     style={{ background: selectedForRestore?.filename === b.filename ? 'var(--primary-bg)' : 'transparent' }}>
                     <td>

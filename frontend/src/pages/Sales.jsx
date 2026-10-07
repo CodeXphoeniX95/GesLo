@@ -222,12 +222,15 @@ function CashRegister({ products, customers, onSale, onClose }) {
     saveHeld(heldCarts.filter((h) => h.id !== held.id));
   };
 
+  const safeProducts = Array.isArray(products) ? products : [];
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+
   const categories = [...new Map(
-    products.filter((p) => p.category_id).map((p) => [p.category_id, { id: p.category_id, name: p.category_name }])
+    safeProducts.filter((p) => p.category_id).map((p) => [p.category_id, { id: p.category_id, name: p.category_name }])
   ).values()];
 
-  const filtered = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+  const filtered = safeProducts.filter((p) => {
+    const matchSearch = (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.reference || '').toLowerCase().includes(search.toLowerCase()) ||
       (p.barcode || '') === search;
     const matchCat = !filterCat || String(p.category_id) === String(filterCat);
@@ -237,22 +240,47 @@ function CashRegister({ products, customers, onSale, onClose }) {
   const addToCart = (product) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.product_id === product.id);
+      const hasContainer = product.unit_quantity && Number(product.unit_quantity) > 1;
       if (existing) {
+        const newQty = existing.quantity + 1;
+        const multiplier = (existing.sell_mode === 'container' && hasContainer) ? Number(product.unit_quantity) : 1;
         return prev.map((i) => i.product_id === product.id
-          ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unit_price } : i);
+          ? { ...i, quantity: newQty, total: newQty * multiplier * i.unit_price } : i);
       }
       return [...prev, {
-        product_id: product.id, product_name: product.name,
-        unit_price: product.sale_price, quantity: 1,
-        total: product.sale_price, stock: product.stock_quantity, unit: product.unit,
+        product_id: product.id,
+        product_name: product.name,
+        unit_price: product.sale_price,
+        quantity: 1,
+        sell_mode: 'piece',
+        total: product.sale_price,
+        stock: product.stock_quantity,
+        unit: product.unit || 'pièce',
+        unit_quantity: product.unit_quantity,
       }];
     });
   };
 
   const updateQty = (productId, qty) => {
     if (qty <= 0) { removeFromCart(productId); return; }
-    setCart((prev) => prev.map((i) => i.product_id === productId
-      ? { ...i, quantity: qty, total: qty * i.unit_price } : i));
+    setCart((prev) => prev.map((i) => {
+      if (i.product_id !== productId) return i;
+      const pcsPerContainer = (i.sell_mode === 'container' && i.unit_quantity > 1) ? Number(i.unit_quantity) : 1;
+      return { ...i, quantity: qty, total: qty * pcsPerContainer * i.unit_price };
+    }));
+  };
+
+  const setSellMode = (productId, mode) => {
+    setCart((prev) => prev.map((i) => {
+      if (i.product_id !== productId) return i;
+      const pcsPerContainer = mode === 'container' && i.unit_quantity > 1 ? Number(i.unit_quantity) : 1;
+      return {
+        ...i,
+        sell_mode: mode,
+        quantity: 1,
+        total: pcsPerContainer * i.unit_price,
+      };
+    }));
   };
 
   const removeFromCart = (productId) => setCart((prev) => prev.filter((i) => i.product_id !== productId));
@@ -268,13 +296,32 @@ function CashRegister({ products, customers, onSale, onClose }) {
       toast.error(`Montant insuffisant. Il manque ${(total - received).toLocaleString('fr-FR')} FCFA.`);
       return;
     }
+    if (paymentMethod === 'credit') {
+      if (!customerId) {
+        toast.error('Un client doit obligatoirement être sélectionné pour une vente à crédit.');
+        return;
+      }
+      if (received > total) {
+        toast.error('L\'acompte ne peut pas être supérieur au total de la vente.');
+        return;
+      }
+    }
     setSaving(true);
     try {
       await onSale({
-        items: cart.map((i) => ({ product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price })),
+        items: cart.map((i) => {
+          const pcsPerContainer = (i.sell_mode === 'container' && i.unit_quantity > 1) ? Number(i.unit_quantity) : 1;
+          const realQty = i.quantity * pcsPerContainer;
+          return {
+            product_id: i.product_id,
+            quantity: realQty,
+            unit_price: i.unit_price,
+          };
+        }),
         payment_method: paymentMethod,
         customer_id: customerId || undefined,
         discount: Number(discount),
+        amount_paid: paymentMethod === 'credit' ? received : undefined,
       });
     } finally { setSaving(false); }
   };
@@ -307,7 +354,7 @@ function CashRegister({ products, customers, onSale, onClose }) {
             {heldCarts.map((h) => (
               <button key={h.id} className="btn btn-secondary btn-sm" onClick={() => resumeCart(h)}
                 title="Reprendre ce panier">
-                ⏸ {h.label}
+                {h.label}
               </button>
             ))}
           </div>
@@ -315,23 +362,31 @@ function CashRegister({ products, customers, onSale, onClose }) {
 
         <div style={{ overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
-            {filtered.map((p) => (
-              <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock_quantity <= 0}
-                style={{
-                  padding: '0.7rem 0.6rem', border: '1px solid var(--gray-200)',
-                  borderRadius: 8, background: p.stock_quantity <= 0 ? 'var(--gray-50)' : '#fff',
-                  cursor: p.stock_quantity <= 0 ? 'not-allowed' : 'pointer',
-                  textAlign: 'left',
-                }}>
-                <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 3, lineHeight: 1.3 }}>{p.name}</div>
-                <div style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem' }}>
-                  {p.sale_price.toLocaleString('fr-FR')} FCFA
-                </div>
-                <div style={{ fontSize: '0.7rem', color: p.stock_quantity <= 0 ? 'var(--danger)' : 'var(--gray-400)', marginTop: 2 }}>
-                  Stock : {p.stock_quantity} {p.unit}
-                </div>
-              </button>
-            ))}
+            {filtered.map((p) => {
+              const hasContainer = p.unit_quantity && Number(p.unit_quantity) > 1;
+              return (
+                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock_quantity <= 0}
+                  style={{
+                    padding: '0.7rem 0.6rem', border: '1px solid var(--gray-200)',
+                    borderRadius: 8, background: p.stock_quantity <= 0 ? 'var(--gray-50)' : '#fff',
+                    cursor: p.stock_quantity <= 0 ? 'not-allowed' : 'pointer',
+                    textAlign: 'left',
+                  }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 3, lineHeight: 1.3 }}>{p.name}</div>
+                  <div style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem' }}>
+                    {p.sale_price.toLocaleString('fr-FR')} FCFA
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: p.stock_quantity <= 0 ? 'var(--danger)' : 'var(--gray-500)', marginTop: 2 }}>
+                    Stock : {p.stock_quantity} {p.unit}
+                    {hasContainer && (
+                      <span style={{ display: 'block', color: 'var(--primary)', fontWeight: 600 }}>
+                        1 {p.unit} = {p.unit_quantity} pcs
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -344,7 +399,7 @@ function CashRegister({ products, customers, onSale, onClose }) {
           {cart.length > 0 && (
             <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--warning)' }}
               onClick={holdCart} title="Mettre en attente">
-              ⏸ En attente
+              En attente
             </button>
           )}
         </h3>
@@ -354,32 +409,85 @@ function CashRegister({ products, customers, onSale, onClose }) {
               Cliquez sur un produit pour l&apos;ajouter.
             </p>
           )}
-          {cart.map((item) => (
-            <div key={item.product_id} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-              background: 'var(--gray-50)', borderRadius: 6, border: '1px solid var(--gray-100)',
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.product_name}
+          {cart.map((item) => {
+            const hasContainer = item.unit_quantity && Number(item.unit_quantity) > 1;
+            const containerName = item.unit || 'carton';
+            const pcsPerContainer = Number(item.unit_quantity) || 1;
+
+            return (
+              <div key={item.product_id} style={{
+                display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px',
+                background: 'var(--gray-50)', borderRadius: 6, border: '1px solid var(--gray-100)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.product_name}
+                    </div>
+                    <div style={{ color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 600 }}>
+                      {item.unit_price.toLocaleString('fr-FR')} FCFA / {item.unit || 'unité'}
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeFromCart(item.product_id)}>
+                    <Trash2 size={14} />
+                  </button>
                 </div>
-                <div style={{ color: 'var(--primary)', fontSize: '0.72rem' }}>
-                  {item.unit_price.toLocaleString('fr-FR')} FCFA
+
+                {/* Choix du Mode : 1 par 1 vs En unité / Carton */}
+                {hasContainer && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${item.sell_mode !== 'container' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '0.72rem', padding: '2px 8px', flex: 1 }}
+                      onClick={() => setSellMode(item.product_id, 'piece')}
+                    >
+                      1 par 1 (Pièce)
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${item.sell_mode === 'container' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '0.72rem', padding: '2px 8px', flex: 1 }}
+                      onClick={() => setSellMode(item.product_id, 'container')}
+                    >
+                      En {containerName} ({pcsPerContainer} pcs)
+                    </button>
+                  </div>
+                )}
+
+                {/* Saisie directe de quantité */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => updateQty(item.product_id, item.quantity - 1)}><Minus size={12} /></button>
+                    <input
+                      className="form-control"
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={item.quantity}
+                      onChange={(e) => updateQty(item.product_id, Math.max(1, Number(e.target.value) || 1))}
+                      style={{ width: 64, textAlign: 'center', padding: '2px 4px', fontSize: '0.85rem', fontWeight: 700 }}
+                    />
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => updateQty(item.product_id, item.quantity + 1)}><Plus size={12} /></button>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--gray-600)', fontWeight: 600 }}>
+                      {item.sell_mode === 'container' ? `${containerName}(s)` : `${item.unit || 'pièce'}(s)`}
+                    </span>
+                  </div>
+
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--gray-800)' }}>
+                    {item.total.toLocaleString('fr-FR')} FCFA
+                  </span>
                 </div>
+
+                {/* Information de déduction stock si en mode carton */}
+                {hasContainer && item.sell_mode === 'container' && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600, marginTop: 2, background: 'var(--primary-50)', padding: '2px 6px', borderRadius: 4 }}>
+                    Soit {item.quantity} {containerName}{item.quantity > 1 ? 's' : ''} = <strong>{item.quantity * pcsPerContainer} pièces</strong> déduites du stock.
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => updateQty(item.product_id, item.quantity - 1)}><Minus size={12} /></button>
-                <span style={{ minWidth: 22, textAlign: 'center', fontSize: '0.82rem', fontWeight: 600 }}>{item.quantity}</span>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => updateQty(item.product_id, item.quantity + 1)}><Plus size={12} /></button>
-              </div>
-              <span style={{ fontWeight: 600, fontSize: '0.78rem', minWidth: 72, textAlign: 'right' }}>
-                {item.total.toLocaleString('fr-FR')} FCFA
-              </span>
-              <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeFromCart(item.product_id)}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Résumé & paiement */}
@@ -435,12 +543,53 @@ function CashRegister({ products, customers, onSale, onClose }) {
             </div>
           )}
 
+          {/* Saisie Acompte & Calcul Dette pour vente à crédit */}
+          {paymentMethod === 'credit' && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--gray-500)', fontSize: '0.78rem', flex: 1 }}>Acompte versé</span>
+                <input className="form-control" type="number" min="0" value={amountReceived}
+                  onChange={(e) => setAmountReceived(e.target.value)}
+                  placeholder="0"
+                  style={{ width: 100, textAlign: 'right', fontSize: '0.85rem' }} />
+              </div>
+              <div style={{
+                background: '#fef3c7', border: '1px solid #fde047',
+                borderRadius: 6, padding: '6px 10px', marginTop: 4,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#92400e' }}>
+                  <span>Acompte versé :</span>
+                  <strong>{received.toLocaleString('fr-FR')} FCFA</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', fontWeight: 700, color: '#b45309', marginTop: 2 }}>
+                  <span>Reste à payer (Crédit) :</span>
+                  <span>{Math.max(0, total - received).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontSize: '0.78rem' }}>Client (optionnel)</label>
-            <select className="form-control" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              <option value="">— Anonyme —</option>
+            <label className="form-label" style={{ fontSize: '0.78rem' }}>
+              Client {paymentMethod === 'credit' ? <span style={{ color: 'var(--danger)', fontWeight: 700 }}>* (Requis pour crédit)</span> : '(Optionnel)'}
+            </label>
+            <select
+              className="form-control"
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              style={{
+                borderColor: paymentMethod === 'credit' && !customerId ? 'var(--danger)' : undefined,
+                backgroundColor: paymentMethod === 'credit' && !customerId ? '#fef2f2' : undefined,
+              }}
+            >
+              <option value="">— Sélectionner un client —</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {paymentMethod === 'credit' && !customerId && (
+              <div style={{ color: 'var(--danger)', fontSize: '0.72rem', marginTop: 2, fontWeight: 600 }}>
+                Sélection obligatoire pour enregistrer une vente à crédit.
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -462,10 +611,13 @@ function CashRegister({ products, customers, onSale, onClose }) {
 
 // ─── Page principale ─────────────────────────────────────────────
 export default function Sales() {
+  const getTodayStr = () => new Date().toISOString().slice(0, 10);
+  const today = getTodayStr();
+
   const [sales, setSales] = useState([]);
   const [salesSearch, setSalesSearch] = useState('');
-  const [filterStart, setFilterStart] = useState('');
-  const [filterEnd, setFilterEnd] = useState('');
+  const [filterStart, setFilterStart] = useState(today);
+  const [filterEnd, setFilterEnd] = useState(today);
   const [filterUser, setFilterUser] = useState('');
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -488,24 +640,33 @@ export default function Sales() {
     if (filterUser) params.user_id = filterUser;
     salesApi.getAll(params)
       .then((res) => {
-        setSales(res.data);
-      }).finally(() => setLoading(false));
+        setSales(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => setSales([]))
+      .finally(() => setLoading(false));
   }, [filterStart, filterEnd, filterUser]);
 
   useEffect(() => {
     load();
-    productsApi.getAll({ active_only: 'true' }).then((r) => setProducts(r.data));
-    customersApi.getAll().then((r) => setCustomers(r.data));
+    productsApi.getAll({ active_only: 'true' })
+      .then((r) => setProducts(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setProducts([]));
+    customersApi.getAll()
+      .then((r) => setCustomers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setCustomers([]));
     reportsApi.getSettings().then((r) => setSettings(r.data)).catch(() => {});
     // Charger les utilisateurs — endpoint public pour les admins/gérants
-    authApi.getUsers().then((r) => setUsers(r.data)).catch(() => {});
+    authApi.getUsers()
+      .then((r) => setUsers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setUsers([]));
   }, [load]);
 
   // Filtre texte local (mémorisé pour éviter les rendus en cascade)
   const filteredSales = useMemo(() => {
-    if (!salesSearch) return sales;
+    const safeSales = Array.isArray(sales) ? sales : [];
+    if (!salesSearch) return safeSales;
     const q = salesSearch.toLowerCase();
-    return sales.filter((s) =>
+    return safeSales.filter((s) =>
       (s.sale_number || '').toLowerCase().includes(q) ||
       (s.cashier_name || '').toLowerCase().includes(q) ||
       (s.customer_name || '').toLowerCase().includes(q)
@@ -546,16 +707,21 @@ export default function Sales() {
   };
 
   const resetFilters = () => {
-    setFilterStart(''); setFilterEnd('');
+    setFilterStart(today); setFilterEnd(today);
     setFilterUser(''); setSalesSearch('');
   };
+
+  const isTodayView = filterStart === today && filterEnd === today;
 
   return (
     <>
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-header-title">Ventes & Caisse</h1>
-          <p className="page-header-subtitle">{filteredSales.length} vente{filteredSales.length > 1 ? 's' : ''}</p>
+          <p className="page-header-subtitle">
+            {filteredSales.length} vente{filteredSales.length > 1 ? 's' : ''}
+            {isTodayView && <span className="badge badge-success" style={{ marginLeft: 8 }}>Aujourd&apos;hui</span>}
+          </p>
         </div>
         <button className="btn btn-primary btn-lg" onClick={() => setModal('pos')}>
           <ShoppingCart size={16} /> Nouvelle vente
@@ -568,6 +734,22 @@ export default function Sales() {
 
       {/* Filtres */}
       <div className="filters-bar" style={{ flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 4, alignSelf: 'flex-end' }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${isTodayView ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => { setFilterStart(today); setFilterEnd(today); }}
+          >
+            Aujourd&apos;hui
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${!filterStart && !filterEnd ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => { setFilterStart(''); setFilterEnd(''); }}
+          >
+            Tout l&apos;historique
+          </button>
+        </div>
         <div className="search-input-wrapper" style={{ flex: '1 1 180px', minWidth: 160 }}>
           <Search size={15} className="search-icon" />
           <input className="form-control" placeholder="N° vente, caissier, client…" value={salesSearch}
@@ -593,7 +775,7 @@ export default function Sales() {
             ))}
           </select>
         </div>
-        {(filterStart || filterEnd || filterUser || salesSearch) && (
+        {(filterStart !== today || filterEnd !== today || filterUser || salesSearch) && (
           <button className="btn btn-secondary" style={{ alignSelf: 'flex-end' }} onClick={resetFilters}>
             Réinitialiser
           </button>

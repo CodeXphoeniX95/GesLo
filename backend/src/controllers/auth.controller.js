@@ -3,20 +3,20 @@ import jwt from 'jsonwebtoken';
 import { getDb } from '../database/connection.js';
 import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/config.js';
 
-function auditLog(db, userId, action, entity, entityId, details) {
-  db.prepare(
+async function auditLog(db, userId, action, entity, entityId, details) {
+  await db.prepare(
     'INSERT INTO audit_log (user_id, action, entity, entity_id, details) VALUES (?, ?, ?, ?, ?)'
   ).run(userId, action, entity, entityId, details ? JSON.stringify(details) : null);
 }
 
-export function login(req, res) {
+export async function login(req, res) {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Nom d\'utilisateur et mot de passe requis.' });
   }
 
   const db = getDb();
-  const user = db.prepare(
+  const user = await db.prepare(
     `SELECT u.*, r.name AS role FROM users u
      JOIN roles r ON u.role_id = r.id
      WHERE u.username = ? AND u.is_active = 1`
@@ -32,7 +32,7 @@ export function login(req, res) {
     { expiresIn: JWT_EXPIRES_IN }
   );
 
-  auditLog(db, user.id, 'LOGIN', 'users', user.id, { username: user.username });
+  await auditLog(db, user.id, 'LOGIN', 'users', user.id, { username: user.username });
 
   res.json({
     token,
@@ -49,7 +49,7 @@ export function getMe(req, res) {
   res.json({ user: req.user });
 }
 
-export function changePassword(req, res) {
+export async function changePassword(req, res) {
   const { current_password, new_password } = req.body;
   if (!current_password || !new_password) {
     return res.status(400).json({ error: 'Mots de passe requis.' });
@@ -59,30 +59,30 @@ export function changePassword(req, res) {
   }
 
   const db = getDb();
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
 
   if (!bcrypt.compareSync(current_password, user.password_hash)) {
     return res.status(400).json({ error: 'Mot de passe actuel incorrect.' });
   }
 
   const hash = bcrypt.hashSync(new_password, 10);
-  db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+  await db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
     .run(hash, req.user.id);
 
-  auditLog(db, req.user.id, 'CHANGE_PASSWORD', 'users', req.user.id, null);
+  await auditLog(db, req.user.id, 'CHANGE_PASSWORD', 'users', req.user.id, null);
   res.json({ message: 'Mot de passe modifié avec succès.' });
 }
 
-export function getUsers(req, res) {
+export async function getUsers(req, res) {
   const db = getDb();
-  const users = db.prepare(
+  const users = await db.prepare(
     `SELECT u.id, u.username, u.full_name, u.commission_rate, u.commission_type, u.is_active, u.created_at, r.name AS role
      FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.created_at DESC`
   ).all();
   res.json(users);
 }
 
-export function createUser(req, res) {
+export async function createUser(req, res) {
   const { username, password, full_name, role, commission_rate = 0, commission_type = 'percentage' } = req.body;
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: 'Tous les champs sont requis.' });
@@ -92,22 +92,22 @@ export function createUser(req, res) {
   }
 
   const db = getDb();
-  const roleRow = db.prepare('SELECT id FROM roles WHERE name = ?').get(role);
+  const roleRow = await db.prepare('SELECT id FROM roles WHERE name = ?').get(role);
   if (!roleRow) return res.status(400).json({ error: 'Rôle invalide.' });
 
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  const existing = await db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (existing) return res.status(409).json({ error: 'Ce nom d\'utilisateur existe déjà.' });
 
   const hash = bcrypt.hashSync(password, 10);
-  const result = db.prepare(
+  const result = await db.prepare(
     'INSERT INTO users (username, password_hash, full_name, role_id, commission_rate, commission_type) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(username, hash, full_name, roleRow.id, Number(commission_rate) || 0, commission_type || 'percentage');
 
-  auditLog(db, req.user.id, 'CREATE_USER', 'users', result.lastInsertRowid, { username });
+  await auditLog(db, req.user.id, 'CREATE_USER', 'users', result.lastInsertRowid, { username });
   res.status(201).json({ id: result.lastInsertRowid, message: 'Utilisateur créé.' });
 }
 
-export function updateUserCommission(req, res) {
+export async function updateUserCommission(req, res) {
   const { id } = req.params;
   const { commission_rate, commission_type } = req.body;
   let rate = Number(commission_rate) || 0;
@@ -120,14 +120,14 @@ export function updateUserCommission(req, res) {
   const db = getDb();
 
   if (type === 'percentage') {
-    const settings = db.prepare('SELECT pool_commission_rate FROM business_settings LIMIT 1').get();
+    const settings = await db.prepare('SELECT pool_commission_rate FROM business_settings LIMIT 1').get();
     const poolRate = Number(settings?.pool_commission_rate || 0);
 
-    const otherUsersSum = db.prepare(
+    const otherUsersSum = await db.prepare(
       "SELECT COALESCE(SUM(commission_rate), 0) AS total FROM users WHERE id != ? AND is_active = 1 AND commission_type = 'percentage'"
     ).get(id);
 
-    const totalAllocated = otherUsersSum.total + poolRate + rate;
+    const totalAllocated = (otherUsersSum?.total || 0) + poolRate + rate;
     if (totalAllocated > 100) {
       return res.status(400).json({
         error: `Impossible d'enregistrer : la somme des commissions (${totalAllocated.toFixed(1)}%) dépasserait 100%.`
@@ -135,15 +135,42 @@ export function updateUserCommission(req, res) {
     }
   }
 
-  db.prepare(
+  await db.prepare(
     'UPDATE users SET commission_rate = ?, commission_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
   ).run(rate, type, id);
 
-  auditLog(db, req.user.id, 'UPDATE_USER_COMMISSION', 'users', id, { commission_rate: rate, commission_type: type });
-  res.json({ message: 'Taux de commission mis à jour.' });
+  // Recalculate existing sale_commissions for this user
+  try {
+    const userSalesComms = await db.prepare(
+      'SELECT id, sale_total, sale_profit, pool_commission FROM sale_commissions WHERE user_id = ?'
+    ).all(id);
+
+    for (const sc of userSalesComms) {
+      let userComm = 0;
+      if (type === 'fixed') {
+        userComm = rate;
+      } else {
+        userComm = Math.max(0, (sc.sale_profit * rate) / 100);
+      }
+      const poolComm = sc.pool_commission || 0;
+      const totalComm = userComm + poolComm;
+      const caisseNet = sc.sale_total - totalComm;
+
+      await db.prepare(
+        `UPDATE sale_commissions
+         SET user_commission = ?, total_commission = ?, caisse_net = ?
+         WHERE id = ?`
+      ).run(userComm, totalComm, caisseNet, sc.id);
+    }
+  } catch (recalcErr) {
+    console.warn('Erreur recalcul sale_commissions:', recalcErr.message);
+  }
+
+  await auditLog(db, req.user.id, 'UPDATE_USER_COMMISSION', 'users', id, { commission_rate: rate, commission_type: type });
+  res.json({ message: 'Taux de commission mis à jour et ventes recalculées.' });
 }
 
-export function updateUserStatus(req, res) {
+export async function updateUserStatus(req, res) {
   const { id } = req.params;
   const { is_active } = req.body;
   if (Number(id) === req.user.id) {
@@ -151,15 +178,15 @@ export function updateUserStatus(req, res) {
   }
 
   const db = getDb();
-  db.prepare('UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+  await db.prepare('UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
     .run(is_active ? 1 : 0, id);
 
-  auditLog(db, req.user.id, is_active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER', 'users', id, null);
+  await auditLog(db, req.user.id, is_active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER', 'users', id, null);
   res.json({ message: 'Statut mis à jour.' });
 }
 
-export function getRoles(req, res) {
+export async function getRoles(req, res) {
   const db = getDb();
-  const roles = db.prepare('SELECT * FROM roles').all();
+  const roles = await db.prepare('SELECT * FROM roles').all();
   res.json(roles);
 }

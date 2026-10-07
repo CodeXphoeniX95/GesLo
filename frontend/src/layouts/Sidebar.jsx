@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Tag, Warehouse, ShoppingCart,
   Truck, Receipt, Users, Factory, BarChart2, TrendingUp,
-  Settings, HardDrive, LogOut, ClipboardList,
+  Settings, HardDrive, LogOut, ClipboardList, Store,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { productsApi } from '../services/api';
@@ -16,6 +16,7 @@ const ROLE_LABELS = {
 export default function Sidebar({ onCloseMobile }) {
   const { user, logout } = useAuth();
   const [alertCount, setAlertCount] = useState(0);
+  const [imgError, setImgError] = useState(false);
   const isWaiter = user?.role === 'waiter';
 
   // Charger le nombre de produits en alerte
@@ -84,8 +85,19 @@ export default function Sidebar({ onCloseMobile }) {
     <aside className="sidebar" aria-label="Navigation principale">
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="sidebar-logo-icon" aria-hidden="true">
-          <img src="/icon.png" alt="" width="28" height="28" style={{ display: 'block', borderRadius: 4 }} />
+        <div className="sidebar-logo-icon" aria-hidden="true" style={{ background: 'var(--primary)', borderRadius: 8, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {!imgError ? (
+            <img
+              src="/icon.png"
+              alt="GesLo"
+              width="26"
+              height="26"
+              style={{ display: 'block', borderRadius: 4, objectFit: 'contain' }}
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <Store size={20} style={{ color: '#ffffff' }} />
+          )}
         </div>
         <div className="sidebar-logo-text">
           <h1>GesLo</h1>
@@ -98,28 +110,37 @@ export default function Sidebar({ onCloseMobile }) {
         {navItems.map((section) => (
           <div key={section.section} className="sidebar-section">
             <div className="sidebar-section-label">{section.section}</div>
-            {section.links.map(({ to, icon: Icon, label, badge }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
-                onClick={onCloseMobile}
-              >
-                <Icon size={16} className="sidebar-link-icon" aria-hidden="true" />
-                <span style={{ flex: 1 }}>{label}</span>
-                {badge && (
-                  <span style={{
-                    background: 'var(--danger)', color: '#fff',
-                    borderRadius: '99px', fontSize: '0.6rem', fontWeight: 700,
-                    padding: '1px 6px', minWidth: 18, textAlign: 'center',
-                    lineHeight: '16px',
-                  }}>
-                    {badge > 99 ? '99+' : badge}
-                  </span>
-                )}
-              </NavLink>
-            ))}
+            {section.links.map(({ to, icon: Icon, label, badge }) => {
+              const isSales = to === '/sales';
+              return (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                  style={({ isActive }) => isSales ? {
+                    background: isActive ? '#16a34a' : 'rgba(34, 197, 94, 0.12)',
+                    color: isActive ? '#ffffff' : '#15803d',
+                    fontWeight: 700,
+                    borderLeft: isActive ? '4px solid #14532d' : '4px solid #16a34a',
+                  } : {}}
+                  onClick={onCloseMobile}
+                >
+                  <Icon size={16} className="sidebar-link-icon" style={isSales ? { color: 'inherit' } : {}} aria-hidden="true" />
+                  <span style={{ flex: 1 }}>{label}</span>
+                  {badge && (
+                    <span style={{
+                      background: 'var(--danger)', color: '#fff',
+                      borderRadius: '99px', fontSize: '0.6rem', fontWeight: 700,
+                      padding: '1px 6px', minWidth: 18, textAlign: 'center',
+                      lineHeight: '16px',
+                    }}>
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
           </div>
         ))}
       </nav>

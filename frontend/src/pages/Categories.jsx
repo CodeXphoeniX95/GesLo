@@ -69,15 +69,16 @@ export default function Categories() {
   const load = () => {
     setLoading(true);
     categoriesApi.getAll().then((res) => {
-      setCategories(res.data);
-    }).finally(() => setLoading(false));
+      setCategories(Array.isArray(res.data) ? res.data : []);
+    }).catch(() => setCategories([])).finally(() => setLoading(false));
   };
   useEffect(load, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return categories.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
+    const list = Array.isArray(categories) ? categories : [];
+    return list.filter((c) =>
+      (c.name || '').toLowerCase().includes(q) ||
       (c.description || '').toLowerCase().includes(q)
     );
   }, [search, categories]);
@@ -131,11 +132,11 @@ export default function Categories() {
                 {filtered.map((cat) => (
                   <tr key={cat.id}>
                     <td>
-                      <span style={{ width: 18, height: 18, borderRadius: '50%', background: cat.color, display: 'inline-block', verticalAlign: 'middle' }} />
+                      <span style={{ width: 18, height: 18, borderRadius: '50%', background: cat.color || '#4f46e5', display: 'inline-block', verticalAlign: 'middle' }} />
                     </td>
                     <td><strong>{cat.name}</strong></td>
                     <td style={{ color: 'var(--gray-500)' }}>{cat.description || '—'}</td>
-                    <td><span className="badge badge-primary">{cat.product_count}</span></td>
+                    <td><span className="badge badge-primary">{cat.product_count || 0}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-ghost btn-icon btn-sm"

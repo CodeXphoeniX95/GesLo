@@ -60,7 +60,10 @@ export default function Suppliers() {
 
   const load = useCallback(() => {
     setLoading(true);
-    suppliersApi.getAll({ search }).then((res) => setSuppliers(res.data)).finally(() => setLoading(false));
+    suppliersApi.getAll({ search })
+      .then((res) => setSuppliers(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setSuppliers([]))
+      .finally(() => setLoading(false));
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
@@ -104,7 +107,7 @@ export default function Suppliers() {
                 <tr><th>Nom</th><th>Téléphone</th><th>Email</th><th>Adresse</th><th>Solde dû</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {suppliers.map((s) => (
+                {(Array.isArray(suppliers) ? suppliers : []).map((s) => (
                   <tr key={s.id}>
                     <td><strong>{s.name}</strong></td>
                     <td>{s.phone || '—'}</td>

@@ -124,6 +124,7 @@ function DonutChart({ data, total }) {
 }
 
 const PERIODS = [
+  { value: '1', label: "Aujourd'hui" },
   { value: '7', label: '7 jours' },
   { value: '30', label: '30 jours' },
   { value: '90', label: '3 mois' },

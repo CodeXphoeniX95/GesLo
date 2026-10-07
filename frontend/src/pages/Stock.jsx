@@ -38,7 +38,7 @@ function StockMovementModal({ products, type, onSubmit, onClose }) {
         <label className="form-label">Produit *</label>
         <select className="form-control" value={form.product_id} required onChange={(e) => set('product_id', e.target.value)}>
           <option value="">— Sélectionner —</option>
-          {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.stock_quantity} {p.unit})</option>)}
+          {(Array.isArray(products) ? products : []).map((p) => <option key={p.id} value={p.id}>{p.name} ({p.stock_quantity} {p.unit})</option>)}
         </select>
       </div>
       <div className="form-group">
@@ -84,7 +84,7 @@ function CorrectionModal({ products, onSubmit, onClose }) {
         <select className="form-control" value={form.product_id} required
           onChange={(e) => setForm({ ...form, product_id: e.target.value })}>
           <option value="">— Sélectionner —</option>
-          {products.map((p) => <option key={p.id} value={p.id}>{p.name} (actuel : {p.stock_quantity})</option>)}
+          {(Array.isArray(products) ? products : []).map((p) => <option key={p.id} value={p.id}>{p.name} (actuel : {p.stock_quantity})</option>)}
         </select>
       </div>
       <div className="form-group">
@@ -130,7 +130,11 @@ export default function Stock() {
       stockApi.getMovements({ limit: 200, start_date: movStart, end_date: movEnd, type: movType }),
       productsApi.getAll({ active_only: 'true' }),
     ]).then(([s, m, p]) => {
-      setStock(s.data); setMovements(m.data); setProducts(p.data);
+      setStock(Array.isArray(s.data) ? s.data : []);
+      setMovements(Array.isArray(m.data) ? m.data : []);
+      setProducts(Array.isArray(p.data) ? p.data : []);
+    }).catch(() => {
+      setStock([]); setMovements([]); setProducts([]);
     }).finally(() => setLoading(false));
   }, [search, lowOnly, movStart, movEnd, movType]);
 
@@ -216,7 +220,7 @@ export default function Stock() {
                     </tr>
                   </thead>
                   <tbody>
-                    {stock.map((p) => {
+                    {(Array.isArray(stock) ? stock : []).map((p) => {
                       const isOut = p.stock_quantity <= 0;
                       const isAlert = p.stock_quantity <= p.alert_threshold;
                       const rowBg = isOut ? '#fee2e2' : isAlert ? '#fff7ed' : 'transparent';
@@ -295,7 +299,7 @@ export default function Stock() {
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map((m) => (
+                  {(Array.isArray(movements) ? movements : []).map((m) => (
                     <tr key={m.id}>
                       <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                         {new Date(m.created_at).toLocaleString('fr-FR')}

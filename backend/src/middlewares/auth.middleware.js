@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/config.js';
 import { getDb } from '../database/connection.js';
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -13,7 +13,7 @@ export function authenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const db = getDb();
-    const user = db.prepare(
+    const user = await db.prepare(
       'SELECT u.id, u.username, u.full_name, u.is_active, r.name AS role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?'
     ).get(payload.userId);
 
@@ -23,7 +23,8 @@ export function authenticate(req, res, next) {
 
     req.user = user;
     next();
-  } catch {
+  } catch (err) {
+    console.error('Erreur authentification token:', err);
     return res.status(401).json({ error: 'Token invalide ou expiré.' });
   }
 }

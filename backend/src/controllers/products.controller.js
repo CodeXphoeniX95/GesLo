@@ -1,13 +1,23 @@
 import { getDb } from '../database/connection.js';
 
-function generateRef(db) {
-  const last = db.prepare('SELECT reference FROM products ORDER BY id DESC LIMIT 1').get();
-  if (!last || !last.reference) return 'PRD-0001';
-  const num = parseInt(last.reference.split('-')[1] || '0') + 1;
-  return `PRD-${String(num).padStart(4, '0')}`;
+async function generateRef(db) {
+  try {
+    const last = await db.prepare('SELECT reference FROM products ORDER BY id DESC LIMIT 1').get();
+    if (last && last.reference) {
+      const parts = String(last.reference).split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(num)) {
+        return `PRD-${String(num + 1).padStart(4, '0')}`;
+      }
+    }
+  } catch (err) {
+    console.warn('generateRef fallback:', err.message);
+  }
+  const timestamp = Date.now().toString().slice(-6);
+  return `PRD-${timestamp}`;
 }
 
-export function getProducts(req, res) {
+export async function getProducts(req, res) {
   const { category_id, search, active_only } = req.query;
   const db = getDb();
 
@@ -29,12 +39,13 @@ export function getProducts(req, res) {
   }
   query += ' ORDER BY p.name';
 
-  res.json(db.prepare(query).all(...params));
+  const rows = await db.prepare(query).all(...params);
+  res.json(rows);
 }
 
-export function getProduct(req, res) {
+export async function getProduct(req, res) {
   const db = getDb();
-  const product = db.prepare(
+  const product = await db.prepare(
     `SELECT p.*, c.name AS category_name, s.name AS supplier_name
      FROM products p
      LEFT JOIN categories c ON p.category_id = c.id
@@ -46,100 +57,144 @@ export function getProduct(req, res) {
   res.json(product);
 }
 
-export function createProduct(req, res) {
-  const {
-    name, barcode, category_id, unit, unit_quantity,
-    purchase_price, sale_price, stock_quantity,
-    alert_threshold, supplier_id, image_path,
-  } = req.body;
+export async function createProduct(req, res) {
+  try {
+    const {
+      name, barcode, category_id, unit, unit_quantity,
+      purchase_price, sale_price, stock_quantity,
+      alert_threshold, supplier_id, image_path,
+    } = req.body;
 
-  if (!name) return res.status(400).json({ error: 'Le nom est requis.' });
-  if (sale_price === undefined || sale_price < 0) {
-    return res.status(400).json({ error: 'Le prix de vente doit être ≥ 0.' });
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Le nom du produit est requis.' });
+    if (sale_price === undefined || sale_price === '' || Number(sale_price) < 0) {
+      return res.status(400).json({ error: 'Le prix de vente doit être supérieur ou égal à 0.' });
+    }
+
+    const db = getDb();
+    const reference = await generateRef(db);
+    const unitQty = unit_quantity && Number(unit_quantity) > 1 ? Number(unit_quantity) : null;
+
+    const result = await db.prepare(
+      `INSERT INTO products
+       (name, reference, barcode, category_id, unit, unit_quantity, purchase_price, sale_price,
+        stock_quantity, alert_threshold, supplier_id, image_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      name.trim(),
+      reference,
+      barcode?.trim() || null,
+      category_id ? Number(category_id) : null,
+      unit || 'pièce',
+      unitQty,
+      purchase_price ? Number(purchase_price) : 0,
+      Number(sale_price),
+      stock_quantity ? Number(stock_quantity) : 0,
+      alert_threshold ? Number(alert_threshold) : 5,
+      supplier_id ? Number(supplier_id) : null,
+      image_path || null
+    );
+
+    const initialStock = stock_quantity ? Number(stock_quantity) : 0;
+    if (initialStock > 0) {
+      const userId = req.user?.id || 1;
+      await db.prepare(
+        `INSERT INTO stock_movements
+         (product_id, type, quantity, quantity_before, quantity_after, note, user_id)
+         VALUES (?, 'initial', ?, 0, ?, 'Stock initial', ?)`
+      ).run(result.lastInsertRowid, initialStock, initialStock, userId);
+    }
+
+    res.status(201).json({ id: result.lastInsertRowid, reference, message: 'Produit créé.' });
+  } catch (err) {
+    console.error('Erreur createProduct:', err);
+    res.status(500).json({ error: err.message || 'Erreur lors de la création du produit.' });
   }
-
-  const db = getDb();
-  const reference = generateRef(db);
-
-  // unit_quantity : nombre d'unités de base contenues dans l'unité (ex: 40 pour un carton de 40 pièces)
-  // null = unité simple (pas de contenance)
-  const unitQty = unit_quantity && Number(unit_quantity) > 1 ? Number(unit_quantity) : null;
-
-  const result = db.prepare(
-    `INSERT INTO products
-     (name, reference, barcode, category_id, unit, unit_quantity, purchase_price, sale_price,
-      stock_quantity, alert_threshold, supplier_id, image_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    name, reference, barcode || null, category_id || null,
-    unit || 'pièce', unitQty,
-    purchase_price || 0, sale_price,
-    stock_quantity || 0, alert_threshold || 5,
-    supplier_id || null, image_path || null
-  );
-
-  if (stock_quantity && stock_quantity > 0) {
-    db.prepare(
-      `INSERT INTO stock_movements
-       (product_id, type, quantity, quantity_before, quantity_after, note, user_id)
-       VALUES (?, 'initial', ?, 0, ?, 'Stock initial', ?)`
-    ).run(result.lastInsertRowid, stock_quantity, stock_quantity, req.user.id);
-  }
-
-  res.status(201).json({ id: result.lastInsertRowid, reference, message: 'Produit créé.' });
 }
 
-export function updateProduct(req, res) {
-  const { id } = req.params;
-  const db = getDb();
-  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
-  if (!product) return res.status(404).json({ error: 'Produit introuvable.' });
+export async function updateProduct(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+    const product = await db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    if (!product) return res.status(404).json({ error: 'Produit introuvable.' });
 
-  const {
-    name, barcode, category_id, unit, unit_quantity,
-    purchase_price, sale_price, alert_threshold, supplier_id, image_path,
-  } = req.body;
+    const {
+      name, barcode, category_id, unit, unit_quantity,
+      purchase_price, sale_price, alert_threshold, supplier_id, image_path,
+    } = req.body;
 
-  if (!name) return res.status(400).json({ error: 'Le nom est requis.' });
-  if (sale_price !== undefined && sale_price < 0) {
-    return res.status(400).json({ error: 'Le prix de vente doit être ≥ 0.' });
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Le nom du produit est requis.' });
+    if (sale_price !== undefined && sale_price !== '' && Number(sale_price) < 0) {
+      return res.status(400).json({ error: 'Le prix de vente doit être supérieur ou égal à 0.' });
+    }
+
+    const unitQty = unit_quantity && Number(unit_quantity) > 1 ? Number(unit_quantity) : null;
+
+    await db.prepare(
+      `UPDATE products SET
+       name=?, barcode=?, category_id=?, unit=?, unit_quantity=?,
+       purchase_price=?, sale_price=?, alert_threshold=?,
+       supplier_id=?, image_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
+    ).run(
+      name.trim(),
+      barcode?.trim() || null,
+      category_id ? Number(category_id) : null,
+      unit || 'pièce',
+      unitQty,
+      purchase_price ? Number(purchase_price) : 0,
+      sale_price !== undefined && sale_price !== '' ? Number(sale_price) : product.sale_price,
+      alert_threshold ? Number(alert_threshold) : 5,
+      supplier_id ? Number(supplier_id) : null,
+      image_path || null,
+      Number(id)
+    );
+
+    res.json({ message: 'Produit mis à jour.' });
+  } catch (err) {
+    console.error('Erreur updateProduct:', err);
+    res.status(500).json({ error: err.message || 'Erreur lors de la mise à jour du produit.' });
   }
-
-  const unitQty = unit_quantity && Number(unit_quantity) > 1 ? Number(unit_quantity) : null;
-
-  db.prepare(
-    `UPDATE products SET
-     name=?, barcode=?, category_id=?, unit=?, unit_quantity=?,
-     purchase_price=?, sale_price=?, alert_threshold=?,
-     supplier_id=?, image_path=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`
-  ).run(
-    name, barcode || null, category_id || null, unit || 'pièce', unitQty,
-    purchase_price || 0, sale_price ?? product.sale_price,
-    alert_threshold || 5, supplier_id || null, image_path || null, id
-  );
-
-  res.json({ message: 'Produit mis à jour.' });
 }
 
-export function updateProductStatus(req, res) {
+export async function updateProductStatus(req, res) {
   const { id } = req.params;
   const { is_active } = req.body;
   const db = getDb();
-  db.prepare('UPDATE products SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+  await db.prepare('UPDATE products SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
     .run(is_active ? 1 : 0, id);
   res.json({ message: `Produit ${is_active ? 'activé' : 'désactivé'}.` });
 }
 
-export function deleteProduct(req, res) {
-  const { id } = req.params;
-  const db = getDb();
-  db.prepare('UPDATE products SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
-  res.json({ message: 'Produit désactivé.' });
+export async function deleteProduct(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+
+    const saleItem = await db.prepare('SELECT 1 FROM sale_items WHERE product_id = ? LIMIT 1').get(id);
+    const purchaseItem = await db.prepare('SELECT 1 FROM purchase_items WHERE product_id = ? LIMIT 1').get(id);
+
+    if (saleItem || purchaseItem) {
+      await db.prepare('UPDATE products SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+      return res.json({
+        message: 'Ce produit possède un historique de ventes ou d\'achats. Il a donc été désactivé pour conserver l\'intégrité des rapports.',
+        deactivated: true
+      });
+    } else {
+      await db.prepare('DELETE FROM products WHERE id = ?').run(id);
+      return res.json({
+        message: 'Produit supprimé définitivement.',
+        deleted: true
+      });
+    }
+  } catch (err) {
+    console.error('Erreur deleteProduct:', err);
+    res.status(500).json({ error: 'Erreur lors de la suppression du produit.' });
+  }
 }
 
-export function getLowStockProducts(req, res) {
+export async function getLowStockProducts(req, res) {
   const db = getDb();
-  const rows = db.prepare(
+  const rows = await db.prepare(
     `SELECT p.*, c.name AS category_name FROM products p
      LEFT JOIN categories c ON p.category_id = c.id
      WHERE p.is_active = 1 AND p.stock_quantity <= p.alert_threshold
@@ -148,10 +203,9 @@ export function getLowStockProducts(req, res) {
   res.json(rows);
 }
 
-// Retourne le nombre d'unités-contenants consommées et restantes
-export function getUnitBreakdown(req, res) {
+export async function getUnitBreakdown(req, res) {
   const db = getDb();
-  const products = db.prepare(
+  const products = await db.prepare(
     `SELECT id, name, unit, unit_quantity, stock_quantity FROM products
      WHERE is_active = 1 AND unit_quantity IS NOT NULL AND unit_quantity > 1`
   ).all();

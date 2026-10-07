@@ -53,7 +53,10 @@ export default function Customers() {
 
   const load = useCallback(() => {
     setLoading(true);
-    customersApi.getAll({ search }).then((res) => setCustomers(res.data)).finally(() => setLoading(false));
+    customersApi.getAll({ search })
+      .then((res) => setCustomers(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setCustomers([]))
+      .finally(() => setLoading(false));
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
@@ -109,7 +112,7 @@ export default function Customers() {
                 <tr><th>Nom</th><th>Téléphone</th><th>Total achats</th><th>Solde dû</th><th>Dernière visite</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {customers.map((c) => (
+                {(Array.isArray(customers) ? customers : []).map((c) => (
                   <tr key={c.id}>
                     <td><strong>{c.name}</strong></td>
                     <td>{c.phone || '—'}</td>
@@ -171,7 +174,7 @@ export default function Customers() {
                 <table>
                   <thead><tr><th>N°</th><th>Total</th><th>Paiement</th><th>Date</th></tr></thead>
                   <tbody>
-                    {detail.recent_sales.map((s) => (
+                    {(Array.isArray(detail.recent_sales) ? detail.recent_sales : []).map((s) => (
                       <tr key={s.sale_number}>
                         <td><span style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>{s.sale_number}</span></td>
                         <td>{s.total?.toLocaleString('fr-FR')} FCFA</td>

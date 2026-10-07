@@ -19,7 +19,8 @@ export default function Inventory() {
 
   useEffect(() => {
     productsApi.getAll({ active_only: 'true' })
-      .then((res) => setProducts(res.data))
+      .then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setProducts([]))
       .finally(() => setLoading(false));
   }, []);
 
@@ -246,7 +247,7 @@ export default function Inventory() {
           <div className="card" style={{ maxHeight: 520, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div className="card-header"><span className="card-title">Produits</span></div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {products.map((p, i) => {
+              {(Array.isArray(products) ? products : []).map((p, i) => {
                 const isCurrent = i === currentIdx;
                 const isDone = saved[p.id];
                 const hasCount = counts[p.id] !== undefined && counts[p.id] !== '';
@@ -288,7 +289,7 @@ export default function Inventory() {
                 <tr><th>Produit</th><th>Catégorie</th><th>Unité</th><th>Stock système</th><th>Quantité comptée</th><th>Écart</th><th>Note</th><th></th></tr>
               </thead>
               <tbody>
-                {products.map((p) => {
+                {(Array.isArray(products) ? products : []).map((p) => {
                   const d = diff(p);
                   const isChanged = d !== null && d !== 0;
                   const tdStyle = isChanged

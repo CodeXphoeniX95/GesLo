@@ -134,6 +134,7 @@ export const reportsApi = {
   getStock: () => api.get('/reports/stock'),
   getExpenses: (params) => api.get('/reports/expenses', { params }),
   getCommissions: (params) => api.get('/reports/commissions', { params }),
+  recordCommissionsAsExpenses: (data) => api.post('/reports/commissions/record-expenses', data),
   getSettings: () => api.get('/reports/settings'),
   updateSettings: (data) => api.put('/reports/settings', data),
 };
@@ -160,6 +161,12 @@ export const serverApi = {
 export const backupApi = {
   list: () => api.get('/backup'),
   create: () => api.post('/backup'),
+};
+
+// ─── Licence & Abonnement (1 An) ─────────────────────────
+export const licenseApi = {
+  getStatus: () => api.get('/license/status'),
+  activate: (data) => api.post('/license/activate', data),
 };
 
 export default api;

@@ -1,9 +1,55 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import MainLayout from './layouts/MainLayout';
 import Spinner from './components/Spinner';
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('React ErrorBoundary capturé :', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          padding: '2.5rem',
+          textAlign: 'center',
+          background: '#fff',
+          borderRadius: '12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+          margin: '2rem auto',
+          maxWidth: '500px'
+        }}>
+          <h2 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Une erreur s&apos;est produite</h2>
+          <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+            Un problème est survenu lors du chargement de cette page.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+          >
+            Recharger la page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Chargement dynamique (lazy) des pages pour le code-splitting des chunks
 const Login = lazy(() => import('./pages/Login'));
@@ -71,12 +117,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <HashRouter>
-      <AuthProvider>
-        <ToastProvider>
-          <AppRoutes />
-        </ToastProvider>
-      </AuthProvider>
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <AuthProvider>
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
+        </AuthProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 }

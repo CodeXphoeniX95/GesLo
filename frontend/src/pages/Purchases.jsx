@@ -1,12 +1,118 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Minus, Trash2, Eye, Truck } from 'lucide-react';
-import { purchasesApi, productsApi, suppliersApi } from '../services/api';
+import { Plus, Minus, Trash2, Eye, Truck, PackagePlus } from 'lucide-react';
+import { purchasesApi, productsApi, suppliersApi, categoriesApi } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 
-function PurchaseForm({ products, suppliers, onSubmit, onClose }) {
+const UNITS = ['pièce', 'kg', 'litre', 'g', 'ml', 'carton', 'casier', 'bouteille', 'sachet', 'boîte', 'palette'];
+
+function QuickProductModal({ isOpen, onClose, onCreated, categories = [] }) {
+  const [form, setForm] = useState({
+    name: '', sale_price: '', purchase_price: '', category_id: '', unit: 'pièce',
+  });
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    try {
+      const res = await productsApi.create({
+        name: form.name.trim(),
+        sale_price: form.sale_price || 0,
+        purchase_price: form.purchase_price || 0,
+        category_id: form.category_id || null,
+        unit: form.unit || 'pièce',
+      });
+      const createdProduct = {
+        id: res.data.id,
+        name: form.name.trim(),
+        sale_price: Number(form.sale_price || 0),
+        purchase_price: Number(form.purchase_price || 0),
+        category_id: form.category_id ? Number(form.category_id) : null,
+        unit: form.unit || 'pièce',
+      };
+      toast.success('Produit créé avec succès !');
+      onCreated(createdProduct);
+      setForm({ name: '', sale_price: '', purchase_price: '', category_id: '', unit: 'pièce' });
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la création du produit.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Création rapide de produit" size="md">
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label className="form-label">Nom du produit *</label>
+          <input
+            className="form-control"
+            value={form.name}
+            required
+            onChange={(e) => set('name', e.target.value)}
+            placeholder="ex: Jus d'Ananas 1L"
+          />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Prix d&apos;achat (FCFA)</label>
+            <input
+              className="form-control"
+              type="number"
+              min="0"
+              value={form.purchase_price}
+              onChange={(e) => set('purchase_price', e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Prix de vente (FCFA) *</label>
+            <input
+              className="form-control"
+              type="number"
+              min="0"
+              required
+              value={form.sale_price}
+              onChange={(e) => set('sale_price', e.target.value)}
+              placeholder="0"
+            />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Catégorie</label>
+            <select className="form-control" value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
+              <option value="">— Aucune —</option>
+              {(Array.isArray(categories) ? categories : []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Unité de vente</label>
+            <select className="form-control" value={form.unit} onChange={(e) => set('unit', e.target.value)}>
+              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Annuler</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Création…' : 'Créer et ajouter'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PurchaseForm({ products, suppliers, onSubmit, onClose, onOpenQuickProduct }) {
   const [supplierId, setSupplierId] = useState('');
   const [items, setItems] = useState([{ product_id: '', quantity: '', unit_price: '' }]);
   const [amountPaid, setAmountPaid] = useState('');
@@ -15,6 +121,21 @@ function PurchaseForm({ products, suppliers, onSubmit, onClose }) {
 
   const addItem = () => setItems((prev) => [...prev, { product_id: '', quantity: '', unit_price: '' }]);
   const removeItem = (i) => setItems((prev) => prev.filter((_, idx) => idx !== i));
+  
+  const handleProductSelect = (index, prodId) => {
+    const selectedProd = products.find((p) => String(p.id) === String(prodId));
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx === index) {
+        return {
+          ...item,
+          product_id: prodId,
+          unit_price: selectedProd?.purchase_price ? String(selectedProd.purchase_price) : item.unit_price,
+        };
+      }
+      return item;
+    }));
+  };
+
   const setItem = (i, k, v) => setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
   const total = items.reduce((acc, i) => acc + (Number(i.quantity) * Number(i.unit_price) || 0), 0);
 
@@ -30,31 +151,59 @@ function PurchaseForm({ products, suppliers, onSubmit, onClose }) {
         <label className="form-label">Fournisseur</label>
         <select className="form-control" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
           <option value="">— Aucun —</option>
-          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          {(Array.isArray(suppliers) ? suppliers : []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--gray-700)' }}>Articles</span>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={addItem}>
-            <Plus size={13} /> Ajouter
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenQuickProduct}>
+              <PackagePlus size={13} /> Nouveau produit
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={addItem}>
+              <Plus size={13} /> Ajouter
+            </button>
+          </div>
         </div>
         {items.map((item, i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 32px', gap: 8, marginBottom: 8 }}>
-            <select className="form-control" value={item.product_id} required
-              onChange={(e) => setItem(i, 'product_id', e.target.value)}>
+            <select
+              className="form-control"
+              value={item.product_id}
+              required
+              onChange={(e) => handleProductSelect(i, e.target.value)}
+            >
               <option value="">— Produit —</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {(Array.isArray(products) ? products : []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <input className="form-control" type="number" min="0.01" step="any" placeholder="Qté" required
-              value={item.quantity} onChange={(e) => setItem(i, 'quantity', e.target.value)} />
-            <input className="form-control" type="number" min="0" placeholder="Prix unit." required
-              value={item.unit_price} onChange={(e) => setItem(i, 'unit_price', e.target.value)} />
+            <input
+              className="form-control"
+              type="number"
+              min="0.01"
+              step="any"
+              placeholder="Qté"
+              required
+              value={item.quantity}
+              onChange={(e) => setItem(i, 'quantity', e.target.value)}
+            />
+            <input
+              className="form-control"
+              type="number"
+              min="0"
+              placeholder="Prix unit."
+              required
+              value={item.unit_price}
+              onChange={(e) => setItem(i, 'unit_price', e.target.value)}
+            />
             {items.length > 1 && (
-              <button type="button" className="btn btn-ghost btn-icon btn-sm"
-                style={{ color: 'var(--danger)' }} onClick={() => removeItem(i)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                style={{ color: 'var(--danger)' }}
+                onClick={() => removeItem(i)}
+              >
                 <Minus size={13} />
               </button>
             )}
@@ -68,8 +217,14 @@ function PurchaseForm({ products, suppliers, onSubmit, onClose }) {
       <div className="form-row">
         <div className="form-group">
           <label className="form-label">Montant payé (FCFA)</label>
-          <input className="form-control" type="number" min="0" value={amountPaid}
-            placeholder={total} onChange={(e) => setAmountPaid(e.target.value)} />
+          <input
+            className="form-control"
+            type="number"
+            min="0"
+            value={amountPaid}
+            placeholder={total}
+            onChange={(e) => setAmountPaid(e.target.value)}
+          />
         </div>
         <div className="form-group">
           <label className="form-label">Note</label>
@@ -91,20 +246,32 @@ export default function Purchases() {
   const [purchases, setPurchases] = useState([]);
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [isQuickProductOpen, setIsQuickProductOpen] = useState(false);
   const toast = useToast();
 
   const load = useCallback(() => {
     setLoading(true);
-    purchasesApi.getAll().then((res) => setPurchases(res.data)).finally(() => setLoading(false));
+    purchasesApi.getAll()
+      .then((res) => setPurchases(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setPurchases([]))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     load();
-    productsApi.getAll({ active_only: 'true' }).then((r) => setProducts(r.data));
-    suppliersApi.getAll().then((r) => setSuppliers(r.data));
+    productsApi.getAll({ active_only: 'true' })
+      .then((r) => setProducts(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setProducts([]));
+    suppliersApi.getAll()
+      .then((r) => setSuppliers(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setSuppliers([]));
+    categoriesApi.getAll()
+      .then((r) => setCategories(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setCategories([]));
   }, [load]);
 
   const handleCreate = async (data) => {
@@ -113,6 +280,10 @@ export default function Purchases() {
       toast.success('Achat enregistré et stock mis à jour.');
       setModal(null); load();
     } catch (err) { toast.error(err.response?.data?.error || 'Erreur.'); }
+  };
+
+  const handleQuickProductCreated = (newProduct) => {
+    setProducts((prev) => [newProduct, ...prev]);
   };
 
   const viewDetail = async (id) => {
@@ -142,7 +313,7 @@ export default function Purchases() {
                 <tr><th>N°</th><th>Date</th><th>Fournisseur</th><th>Total</th><th>Payé</th><th>Reste dû</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {purchases.map((p) => (
+                {(Array.isArray(purchases) ? purchases : []).map((p) => (
                   <tr key={p.id}>
                     <td><span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--gray-500)' }}>{p.purchase_number}</span></td>
                     <td style={{ fontSize: '0.78rem' }}>{new Date(p.created_at).toLocaleDateString('fr-FR')}</td>
@@ -155,8 +326,11 @@ export default function Purchases() {
                         : <span className="badge badge-success">Soldé</span>}
                     </td>
                     <td>
-                      <button className="btn btn-ghost btn-icon btn-sm" title="Voir le détail"
-                        onClick={() => viewDetail(p.id)}>
+                      <button
+                        className="btn btn-ghost btn-icon btn-sm"
+                        title="Voir le détail"
+                        onClick={() => viewDetail(p.id)}
+                      >
                         <Eye size={14} />
                       </button>
                     </td>
@@ -169,8 +343,21 @@ export default function Purchases() {
       )}
 
       <Modal isOpen={modal === 'create'} onClose={() => setModal(null)} title="Nouvel achat" size="lg">
-        <PurchaseForm products={products} suppliers={suppliers} onSubmit={handleCreate} onClose={() => setModal(null)} />
+        <PurchaseForm
+          products={products}
+          suppliers={suppliers}
+          onSubmit={handleCreate}
+          onClose={() => setModal(null)}
+          onOpenQuickProduct={() => setIsQuickProductOpen(true)}
+        />
       </Modal>
+
+      <QuickProductModal
+        isOpen={isQuickProductOpen}
+        onClose={() => setIsQuickProductOpen(false)}
+        onCreated={handleQuickProductCreated}
+        categories={categories}
+      />
 
       <Modal isOpen={modal === 'detail'} onClose={() => setModal(null)} title={`Achat — ${selected?.purchase_number}`} size="lg">
         {selected && (

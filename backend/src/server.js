@@ -19,6 +19,7 @@ import reportsRoutes from './routes/reports.routes.js';
 import backupRoutes from './routes/backup.routes.js';
 import daycloseRoutes from './routes/dayclose.routes.js';
 import auditRoutes from './routes/audit.routes.js';
+import licenseRoutes from './routes/license.routes.js';
 
 const app = express();
 
@@ -44,8 +45,18 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/day', daycloseRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/license', licenseRoutes);
 
-// Health check + infos LAN
+// Route racine & Health check + infos LAN
+app.get(['/', '/api'], (req, res) => res.json({
+  name: 'GesLo API Server',
+  status: 'online',
+  version: '1.0.0',
+  timestamp: new Date().toISOString(),
+  local_ip: getLocalIP(),
+  health: '/health',
+}));
+
 app.get('/health', (req, res) => res.json({
   status: 'ok',
   timestamp: new Date().toISOString(),

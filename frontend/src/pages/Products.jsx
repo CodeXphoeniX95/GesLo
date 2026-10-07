@@ -11,11 +11,9 @@ import Spinner from '../components/Spinner';
 import EmptyState from '../components/EmptyState';
 
 const UNITS = ['pièce', 'kg', 'litre', 'g', 'ml', 'carton', 'casier', 'bouteille', 'sachet', 'boîte', 'palette'];
-
-// Unités qui peuvent avoir une contenance
 const CONTAINER_UNITS = ['carton', 'casier', 'palette', 'boîte', 'sachet'];
 
-function ProductForm({ initial, categories, suppliers, onSubmit, onClose }) {
+function ProductForm({ initial, categories = [], suppliers = [], onSubmit, onClose }) {
   const [form, setForm] = useState({
     name: '', barcode: '', category_id: '', unit: 'pièce',
     unit_quantity: '', purchase_price: '', sale_price: '',
@@ -25,6 +23,8 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const isContainer = CONTAINER_UNITS.includes(form.unit);
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeSuppliers = Array.isArray(suppliers) ? suppliers : [];
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true);
@@ -42,7 +42,7 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose }) {
           <label className="form-label">Catégorie</label>
           <select className="form-control" value={form.category_id || ''} onChange={(e) => set('category_id', e.target.value)}>
             <option value="">— Aucune —</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {safeCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
       </div>
@@ -58,68 +58,42 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose }) {
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Unité</label>
+          <label className="form-label">Unité de vente *</label>
           <select className="form-control" value={form.unit} onChange={(e) => set('unit', e.target.value)}>
-            {UNITS.map((u) => <option key={u}>{u}</option>)}
+            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
         {isContainer && (
           <div className="form-group">
-            <label className="form-label">
-              Contenance <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>(nb de pièces par {form.unit})</span>
-            </label>
-            <input
-              className="form-control"
-              type="number" min="2"
-              placeholder={`Ex : 40 pièces par ${form.unit}`}
-              value={form.unit_quantity || ''}
-              onChange={(e) => set('unit_quantity', e.target.value)}
-            />
+            <label className="form-label">Contenance (nb de pièces par {form.unit}) *</label>
+            <input className="form-control" type="number" min="2" required placeholder="ex: 40 pour 1 carton de 40"
+              value={form.unit_quantity || ''} onChange={(e) => set('unit_quantity', e.target.value)} />
           </div>
         )}
-        <div className="form-group">
-          <label className="form-label">Seuil d&apos;alerte</label>
-          <input className="form-control" type="number" min="0" value={form.alert_threshold} onChange={(e) => set('alert_threshold', e.target.value)} />
-        </div>
       </div>
-      {!initial?.id && (
-        <div className="form-group">
-          <label className="form-label">
-            Stock initial
-            {isContainer && form.unit_quantity > 1 && (
-              <span style={{ color: 'var(--gray-400)', fontWeight: 400, marginLeft: 8 }}>
-                (en nombre de {form.unit}s)
-              </span>
-            )}
-          </label>
-          <input className="form-control" type="number" min="0" value={form.stock_quantity || ''} onChange={(e) => set('stock_quantity', e.target.value)} />
-        </div>
-      )}
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Fournisseur</label>
-          <select className="form-control" value={form.supplier_id || ''} onChange={(e) => set('supplier_id', e.target.value)}>
-            <option value="">— Aucun —</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <label className="form-label">Stock initial ({form.unit}s)</label>
+          <input className="form-control" type="number" min="0" value={form.stock_quantity || ''}
+            onChange={(e) => set('stock_quantity', e.target.value)} disabled={!!initial?.id} />
         </div>
         <div className="form-group">
-          <label className="form-label">Code-barres</label>
-          <input className="form-control" value={form.barcode || ''} onChange={(e) => set('barcode', e.target.value)} />
+          <label className="form-label">Seuil d&apos;alerte ({form.unit}s)</label>
+          <input className="form-control" type="number" min="0" value={form.alert_threshold}
+            onChange={(e) => set('alert_threshold', e.target.value)} />
         </div>
       </div>
+      <div className="form-group">
+        <label className="form-label">Fournisseur</label>
+        <select className="form-control" value={form.supplier_id || ''} onChange={(e) => set('supplier_id', e.target.value)}>
+          <option value="">— Aucun —</option>
+          {safeSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
 
-      {/* Info contenance */}
       {isContainer && form.unit_quantity > 1 && (
-        <div style={{
-          background: 'var(--primary-bg)', border: '1px solid var(--primary-light)',
-          borderRadius: 'var(--border-radius)', padding: '0.6rem 0.9rem',
-          fontSize: 'var(--font-size-xs)', color: 'var(--primary-dark)',
-          marginBottom: 12, lineHeight: 1.6,
-        }}>
+        <div style={{ padding: '0.625rem 0.875rem', background: 'var(--primary-50)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--primary-700)', marginBottom: 12 }}>
           <strong>Contenance activée :</strong> 1 {form.unit} = {form.unit_quantity} pièce{form.unit_quantity > 1 ? 's' : ''}.
-          Les ventes se feront en pièces individuelles.
-          Quand {form.unit_quantity} pièces sont vendues, 1 {form.unit} complet est consommé.
         </div>
       )}
 
@@ -133,7 +107,6 @@ function ProductForm({ initial, categories, suppliers, onSubmit, onClose }) {
   );
 }
 
-// Affichage du stock en tenant compte de la contenance
 function StockDisplay({ product }) {
   const { stock_quantity, unit_quantity, unit, alert_threshold } = product;
   const isAlert = stock_quantity <= alert_threshold;
@@ -179,12 +152,14 @@ export default function Products() {
   const load = useCallback(() => {
     setLoading(true);
     productsApi.getAll({ search, category_id: filterCat, active_only: 'false' })
-      .then((res) => setProducts(res.data)).finally(() => setLoading(false));
+      .then((res) => setProducts(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
   }, [search, filterCat]);
 
   useEffect(() => {
-    categoriesApi.getAll().then((r) => setCategories(r.data));
-    suppliersApi.getAll().then((r) => setSuppliers(r.data));
+    categoriesApi.getAll().then((r) => setCategories(Array.isArray(r.data) ? r.data : [])).catch(() => setCategories([]));
+    suppliersApi.getAll().then((r) => setSuppliers(Array.isArray(r.data) ? r.data : [])).catch(() => setSuppliers([]));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -204,16 +179,25 @@ export default function Products() {
     } catch { toast.error('Erreur.'); }
   };
   const handleDelete = async () => {
-    try { await productsApi.delete(deleteDialog.id); toast.success('Produit désactivé.'); load(); }
-    catch { toast.error('Erreur.'); }
+    try {
+      const res = await productsApi.delete(deleteDialog.id);
+      toast.success(res.data?.message || 'Produit supprimé.');
+      setDeleteDialog(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la suppression.');
+    }
   };
+
+  const safeProducts = Array.isArray(products) ? products : [];
+  const safeCategories = Array.isArray(categories) ? categories : [];
 
   return (
     <>
       <div className="page-header">
         <div className="page-header-left">
           <h1 className="page-header-title">Produits</h1>
-          <p className="page-header-subtitle">{products.length} produit{products.length > 1 ? 's' : ''}</p>
+          <p className="page-header-subtitle">{safeProducts.length} produit{safeProducts.length > 1 ? 's' : ''}</p>
         </div>
         <button className="btn btn-primary" onClick={() => setModal('create')}>
           <Plus size={16} /> Nouveau produit
@@ -228,60 +212,64 @@ export default function Products() {
         </div>
         <select className="form-control" style={{ maxWidth: 200 }} value={filterCat}
           onChange={(e) => setFilterCat(e.target.value)}>
-          <option value="">Toutes catégories</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="">Toutes les catégories</option>
+          {safeCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
 
-      {loading ? <Spinner /> : products.length === 0 ? (
-        <EmptyState icon={Package} title="Aucun produit" message="Ajoutez votre premier produit." />
+      {loading ? (
+        <Spinner />
+      ) : safeProducts.length === 0 ? (
+        <EmptyState icon={Package} title="Aucun produit trouvé"
+          description="Créez votre premier produit pour commencer."
+          action={<button className="btn btn-primary" onClick={() => setModal('create')}><Plus size={16} /> Créer un produit</button>} />
       ) : (
-        <div className="card">
-          <div className="table-wrapper">
-            <table>
+        <div className="card" style={{ padding: 0 }}>
+          <div className="table-responsive">
+            <table className="table">
               <thead>
                 <tr>
-                  <th>Réf.</th><th>Nom</th><th>Catégorie</th><th>Unité</th>
-                  <th>Prix achat</th><th>Prix vente</th><th>Stock</th><th>Statut</th><th>Actions</th>
+                  <th>Réf.</th>
+                  <th>Produit</th>
+                  <th>Catégorie</th>
+                  <th>Fournisseur</th>
+                  <th>P. Achat</th>
+                  <th>P. Vente</th>
+                  <th>Stock</th>
+                  <th>Statut</th>
+                  <th style={{ width: 110 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {products.map((p) => (
-                  <tr key={p.id}>
-                    <td><span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--gray-400)' }}>{p.reference}</span></td>
-                    <td>
-                      <strong>{p.name}</strong>
-                      {p.unit_quantity > 1 && (
-                        <span style={{ marginLeft: 6, fontSize: '0.7rem', color: 'var(--info)', background: 'var(--info-bg)', borderRadius: 4, padding: '1px 5px' }}>
-                          1 {p.unit} = {p.unit_quantity} pièces
-                        </span>
-                      )}
-                    </td>
+                {safeProducts.map((p) => (
+                  <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
+                    <td><span className="code-badge">{p.reference}</span></td>
+                    <td><strong>{p.name}</strong></td>
                     <td>{p.category_name || '—'}</td>
-                    <td>{p.unit}</td>
-                    <td>{p.purchase_price?.toLocaleString('fr-FR')} FCFA</td>
-                    <td><strong>{p.sale_price?.toLocaleString('fr-FR')} FCFA</strong></td>
+                    <td>{p.supplier_name || '—'}</td>
+                    <td>{p.purchase_price ? `${p.purchase_price.toLocaleString('fr-FR')} FCFA` : '—'}</td>
+                    <td><strong>{p.sale_price.toLocaleString('fr-FR')} FCFA</strong></td>
                     <td><StockDisplay product={p} /></td>
                     <td>
-                      <span className={`badge badge-${p.is_active ? 'success' : 'gray'}`}>
+                      <span className={`badge ${p.is_active ? 'badge-success' : 'badge-neutral'}`}>
                         {p.is_active ? 'Actif' : 'Inactif'}
                       </span>
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-ghost btn-icon btn-sm" title="Modifier"
+                        <button className="btn btn-sm btn-secondary" title="Modifier"
                           onClick={() => { setSelected(p); setModal('edit'); }}>
-                          <Pencil size={14} />
+                          <Pencil size={13} />
                         </button>
-                        <button className="btn btn-ghost btn-icon btn-sm"
+                        <button className="btn btn-sm btn-secondary"
                           title={p.is_active ? 'Désactiver' : 'Activer'}
-                          style={{ color: p.is_active ? 'var(--warning)' : 'var(--success)' }}
                           onClick={() => handleToggleStatus(p)}>
-                          {p.is_active ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                          {p.is_active ? <ToggleRight size={13} style={{ color: 'var(--success-600)' }} />
+                                      : <ToggleLeft size={13} style={{ color: 'var(--gray-400)' }} />}
                         </button>
-                        <button className="btn btn-ghost btn-icon btn-sm" style={{ color: 'var(--danger)' }}
-                          title="Désactiver" onClick={() => setDeleteDialog(p)}>
-                          <Trash2 size={14} />
+                        <button className="btn btn-sm btn-danger" title="Supprimer le produit"
+                          onClick={() => setDeleteDialog(p)}>
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -293,16 +281,23 @@ export default function Products() {
         </div>
       )}
 
-      <Modal isOpen={modal === 'create'} onClose={() => setModal(null)} title="Nouveau produit" size="lg">
+      <Modal isOpen={modal === 'create'} title="Nouveau produit" onClose={() => setModal(null)}>
         <ProductForm categories={categories} suppliers={suppliers} onSubmit={handleCreate} onClose={() => setModal(null)} />
       </Modal>
-      <Modal isOpen={modal === 'edit'} onClose={() => setModal(null)} title="Modifier le produit" size="lg">
-        {selected && <ProductForm initial={selected} categories={categories} suppliers={suppliers} onSubmit={handleEdit} onClose={() => setModal(null)} />}
+
+      <Modal isOpen={modal === 'edit' && !!selected} title="Modifier le produit" onClose={() => { setModal(null); setSelected(null); }}>
+        <ProductForm initial={selected} categories={categories} suppliers={suppliers} onSubmit={handleEdit} onClose={() => { setModal(null); setSelected(null); }} />
       </Modal>
-      <ConfirmDialog isOpen={!!deleteDialog} onClose={() => setDeleteDialog(null)} onConfirm={handleDelete}
-        title="Désactiver le produit"
-        message={`Désactiver "${deleteDialog?.name}" ? Il n'apparaîtra plus dans la caisse.`}
-        confirmLabel="Désactiver" />
+
+      <ConfirmDialog
+        isOpen={!!deleteDialog}
+        title="Supprimer le produit"
+        message={`Voulez-vous vraiment supprimer "${deleteDialog?.name}" ?`}
+        confirmLabel="Supprimer"
+        variant="danger"
+        onConfirm={handleDelete}
+        onClose={() => setDeleteDialog(null)}
+      />
     </>
   );
 }

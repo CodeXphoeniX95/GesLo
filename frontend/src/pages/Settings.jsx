@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Save, Plus, Lock, UserCheck, UserX, FileText } from 'lucide-react';
-import { reportsApi, authApi, auditApi } from '../services/api';
+import { Save, Plus, Lock, UserCheck, UserX, FileText, Pencil } from 'lucide-react';
+import { reportsApi, authApi, auditApi, licenseApi } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
@@ -196,10 +196,14 @@ export default function Settings() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [tab, setTab] = useState('business');
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [licenseInfo, setLicenseInfo] = useState(null);
+  const [licenseKeyInput, setLicenseKeyInput] = useState('');
+  const [activatingLicense, setActivatingLicense] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [userModal, setUserModal] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', password: '', full_name: '', role: 'cashier', commission_rate: 0, commission_type: 'percentage' });
@@ -212,9 +216,14 @@ export default function Settings() {
 
   useEffect(() => {
     reportsApi.getSettings().then((r) => setSettings(r.data)).finally(() => setLoading(false));
+    licenseApi.getStatus().then((r) => setLicenseInfo(r.data)).catch(() => {});
     if (isAdmin) {
-      authApi.getUsers().then((r) => setUsers(r.data));
-      authApi.getRoles().then((r) => setRoles(r.data));
+      authApi.getUsers()
+        .then((r) => setUsers(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setUsers([]));
+      authApi.getRoles()
+        .then((r) => setRoles(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setRoles([]));
     }
   }, [isAdmin]);
 
@@ -222,16 +231,21 @@ export default function Settings() {
     if (tab === 'audit' && isAdmin) {
       setLoadingAudit(true);
       auditApi.getAll({ limit: 200 })
-        .then((r) => setAuditLogs(r.data))
-        .catch(() => {})
+        .then((r) => setAuditLogs(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setAuditLogs([]))
         .finally(() => setLoadingAudit(false));
     }
   }, [tab, isAdmin]);
 
   const handleSaveSettings = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { await reportsApi.updateSettings(settings); toast.success('Paramètres sauvegardés.'); }
-    catch { toast.error('Erreur lors de la sauvegarde.'); }
+    try {
+      await reportsApi.updateSettings(settings);
+      toast.success('Paramètres sauvegardés.');
+      setIsEditing(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la sauvegarde.');
+    }
     setSaving(false);
   };
 
@@ -317,111 +331,232 @@ export default function Settings() {
       {/* ── Établissement ── */}
       {tab === 'business' && settings && (
         <form onSubmit={handleSaveSettings}>
-          <div className="card">
-            <div className="card-header"><span className="card-title">Informations de l&apos;établissement</span></div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Nom *</label>
-                <input className="form-control" required value={settings.name || ''} onChange={(e) => set('name', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Type</label>
-                <select className="form-control" value={settings.business_type || 'shop'} onChange={(e) => set('business_type', e.target.value)}>
-                  {BUSINESS_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Téléphone</label>
-                <input className="form-control" value={settings.phone || ''} onChange={(e) => set('phone', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input className="form-control" type="email" value={settings.email || ''} onChange={(e) => set('email', e.target.value)} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Adresse</label>
-              <input className="form-control" value={settings.address || ''} onChange={(e) => set('address', e.target.value)} />
-            </div>
-          </div>
-
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-header"><span className="card-title">Localisation & Finance</span></div>
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Devise</label>
-                <select className="form-control" value={settings.currency || 'FCFA'} onChange={(e) => set('currency', e.target.value)}>
-                  {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Symbole</label>
-                <input className="form-control" value={settings.currency_symbol || ''} onChange={(e) => set('currency_symbol', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Taxe (%)</label>
-                <input className="form-control" type="number" min="0" max="100" value={settings.tax_rate || 0} onChange={(e) => set('tax_rate', e.target.value)} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
-                <input type="checkbox" checked={!!settings.allow_negative_stock} onChange={(e) => set('allow_negative_stock', e.target.checked)} />
-                Autoriser les ventes à découvert (stock négatif)
-              </label>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Message pied de reçu</label>
-              <input className="form-control" value={settings.receipt_footer || ''} onChange={(e) => set('receipt_footer', e.target.value)} />
-            </div>
-          </div>
-
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-header">
-              <span className="card-title">Mode Commissions sur Ventes</span>
-            </div>
-            <div className="form-group">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  checked={!!settings.enable_commissions}
-                  onChange={(e) => set('enable_commissions', e.target.checked)}
-                />
-                Activer le système de commissions pour l&apos;équipe
-              </label>
-              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4, marginLeft: 24 }}>
-                Calcul automatique des commissions des vendeurs et du pool d&apos;équipe prélevées sur le bénéfice brut des ventes.
-              </p>
-            </div>
-
-            {settings.enable_commissions && (
-              <div className="form-row" style={{ marginTop: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">Taux du Pool collectif (%)</label>
-                  <input
-                    className="form-control"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    value={settings.pool_commission_rate || 0}
-                    onChange={(e) => set('pool_commission_rate', e.target.value)}
-                    placeholder="2.0"
-                  />
-                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4 }}>
-                    Pourcentage prélevé sur le bénéfice de chaque vente et réservé au pool d&apos;équipe.
-                  </p>
-                </div>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 16, background: isEditing ? '#fefce8' : 'var(--gray-50)',
+            border: `1px solid ${isEditing ? '#fde047' : 'var(--gray-200)'}`,
+            borderRadius: 8, padding: '10px 16px', flexWrap: 'wrap', gap: 10,
+          }}>
+            <span style={{ fontSize: '0.85rem', color: isEditing ? '#854d0e' : 'var(--gray-600)', fontWeight: 600 }}>
+              {isEditing ? 'Mode édition activé — Vous pouvez modifier les paramètres ci-dessous.' : 'Mode lecture seule — Cliquez sur "Modifier" pour effectuer des changements.'}
+            </span>
+            {!isEditing ? (
+              <button type="button" className="btn btn-primary" onClick={() => setIsEditing(true)}>
+                <Pencil size={15} /> Modifier les paramètres
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-success" disabled={saving}>
+                  <Save size={15} /> {saving ? 'Sauvegarde…' : 'Enregistrer les modifications'}
+                </button>
               </div>
             )}
           </div>
 
-          <div style={{ marginTop: 16 }}>
-            <button type="submit" className="btn btn-primary btn-lg" disabled={saving}>
-              <Save size={16} /> {saving ? 'Enregistrement…' : 'Sauvegarder'}
+          <fieldset disabled={!isEditing} style={{ border: 'none', padding: 0, margin: 0 }}>
+            <div className="card">
+              <div className="card-header"><span className="card-title">Informations de l&apos;établissement</span></div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Nom *</label>
+                  <input className="form-control" required value={settings.name || ''} onChange={(e) => set('name', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Type</label>
+                  <select className="form-control" value={settings.business_type || 'shop'} onChange={(e) => set('business_type', e.target.value)}>
+                    {BUSINESS_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Téléphone</label>
+                  <input className="form-control" value={settings.phone || ''} onChange={(e) => set('phone', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email</label>
+                  <input className="form-control" type="email" value={settings.email || ''} onChange={(e) => set('email', e.target.value)} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Adresse</label>
+                <input className="form-control" value={settings.address || ''} onChange={(e) => set('address', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="card-header"><span className="card-title">Localisation & Finance</span></div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Devise</label>
+                  <select className="form-control" value={settings.currency || 'FCFA'} onChange={(e) => set('currency', e.target.value)}>
+                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Symbole</label>
+                  <input className="form-control" value={settings.currency_symbol || ''} onChange={(e) => set('currency_symbol', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Taxe (%)</label>
+                  <input className="form-control" type="number" min="0" max="100" value={settings.tax_rate || 0} onChange={(e) => set('tax_rate', e.target.value)} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isEditing ? 'pointer' : 'not-allowed', fontSize: 'var(--font-size-sm)' }}>
+                  <input type="checkbox" checked={!!settings.allow_negative_stock} onChange={(e) => set('allow_negative_stock', e.target.checked)} />
+                  Autoriser les ventes à découvert (stock négatif)
+                </label>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Message pied de reçu</label>
+                <input className="form-control" value={settings.receipt_footer || ''} onChange={(e) => set('receipt_footer', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="card" style={{ marginTop: 16 }}>
+              <div className="card-header">
+                <span className="card-title">Mode Commissions sur Ventes</span>
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isEditing ? 'pointer' : 'not-allowed', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.enable_commissions}
+                    onChange={(e) => set('enable_commissions', e.target.checked)}
+                  />
+                  Activer le système de commissions pour l&apos;équipe
+                </label>
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4, marginLeft: 24 }}>
+                  Calcul automatique des commissions des vendeurs et du pool d&apos;équipe prélevées sur le bénéfice brut des ventes.
+                </p>
+              </div>
+
+              {settings.enable_commissions && (
+                <div className="form-row" style={{ marginTop: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Taux du Pool collectif (%)</label>
+                    <input
+                      className="form-control"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={settings.pool_commission_rate || 0}
+                      onChange={(e) => set('pool_commission_rate', e.target.value)}
+                      placeholder="2.0"
+                    />
+                    <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4 }}>
+                      Pourcentage prélevé sur le bénéfice avant rémunérations et réservé au pool d&apos;équipe.
+                    </p>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Fréquence de calcul des rémunérations</label>
+                    <select
+                      className="form-control"
+                      value={settings.commission_period_type || 'monthly'}
+                      onChange={(e) => set('commission_period_type', e.target.value)}
+                    >
+                      <option value="weekly">Hebdomadaire (Chaque semaine / 7 jours)</option>
+                      <option value="biweekly">Quinzaine (Toutes les 2 semaines / 14 jours)</option>
+                      <option value="monthly">Mensuelle (Chaque mois)</option>
+                      <option value="quarterly">Trimestrielle (Tous les 3 mois)</option>
+                      <option value="custom">Personnalisée / Libre</option>
+                    </select>
+                    <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)', marginTop: 4 }}>
+                      Période par défaut pour la clôture et le versement des rémunérations aux membres.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </fieldset>
+
+        {isEditing && (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+              Annuler
+            </button>
+            <button type="submit" className="btn btn-success" disabled={saving}>
+              <Save size={15} /> {saving ? 'Sauvegarde…' : 'Enregistrer les modifications'}
             </button>
           </div>
+        )}
+
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="card-header">
+              <span className="card-title">Licence & Abonnement (1 An)</span>
+            </div>
+            {licenseInfo && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                <div style={{ background: 'var(--gray-50)', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                  <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Statut Licence</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: licenseInfo.is_valid ? 'var(--success)' : 'var(--danger)', marginTop: 2 }}>
+                    {licenseInfo.is_valid ? '✓ Active' : '✕ Expirée / Invalide'}
+                  </div>
+                </div>
+                <div style={{ background: 'var(--gray-50)', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                  <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Temps Restant</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>
+                    {licenseInfo.days_left || 0} jours
+                  </div>
+                </div>
+                <div style={{ background: 'var(--gray-50)', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+                  <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Date d&apos;expiration</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: 4 }}>
+                    {licenseInfo.expires_at ? new Date(licenseInfo.expires_at).toLocaleDateString('fr-FR') : '—'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Saisir une nouvelle clé de réactivation (1 An)</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="form-control"
+                  style={{ fontFamily: 'monospace', textTransform: 'uppercase' }}
+                  value={licenseKeyInput}
+                  onChange={(e) => setLicenseKeyInput(e.target.value)}
+                  placeholder="ex: GESLO-1YR-2026-KEY"
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={activatingLicense || !licenseKeyInput.trim()}
+                  onClick={async () => {
+                    setActivatingLicense(true);
+                    try {
+                      const res = await licenseApi.activate({ key: licenseKeyInput.trim() });
+                      toast.success(res.data.message || 'Licence activée.');
+                      setLicenseKeyInput('');
+                      licenseApi.getStatus().then((r) => setLicenseInfo(r.data));
+                    } catch (err) {
+                      toast.error(err.response?.data?.error || 'Erreur d\'activation.');
+                    } finally {
+                      setActivatingLicense(false);
+                    }
+                  }}
+                >
+                  {activatingLicense ? 'Activation…' : 'Activer'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {isEditing && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+                Annuler
+              </button>
+              <button type="submit" className="btn btn-success" disabled={saving}>
+                <Save size={15} /> {saving ? 'Sauvegarde…' : 'Enregistrer les modifications'}
+              </button>
+            </div>
+          )}
         </form>
       )}
 
@@ -430,7 +565,8 @@ export default function Settings() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Clé de répartition du Bénéfice Net */}
           {(() => {
-            const usersCommSum = users.reduce((sum, u) => sum + (u.is_active && u.commission_type !== 'fixed' ? Number(u.commission_rate || 0) : 0), 0);
+            const safeUsers = Array.isArray(users) ? users : [];
+            const usersCommSum = safeUsers.reduce((sum, u) => sum + (u.is_active && u.commission_type !== 'fixed' ? Number(u.commission_rate || 0) : 0), 0);
             const poolCommRate = Number(settings?.pool_commission_rate || 0);
             const allocatedTotal = usersCommSum + poolCommRate;
             const boutiqueShare = Math.max(0, 100 - allocatedTotal);
@@ -446,7 +582,7 @@ export default function Settings() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 8 }}>
                   <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Membres / Équipe ({users.filter(u=>u.is_active).length})</div>
+                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--gray-500)' }}>Membres / Équipe ({safeUsers.filter(u=>u.is_active).length})</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)', marginTop: 2 }}>{usersCommSum.toFixed(1)} %</div>
                   </div>
                   <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid var(--gray-200)' }}>
@@ -486,7 +622,7 @@ export default function Settings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
+                  {(Array.isArray(users) ? users : []).map((u) => (
                     <tr key={u.id}>
                       <td><strong>{u.full_name}</strong></td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{u.username}</td>
@@ -554,6 +690,8 @@ export default function Settings() {
                             CREATE_USER: 'Création utilisateur',
                             ACTIVATE_USER: 'Activation utilisateur',
                             DEACTIVATE_USER: 'Désactivation utilisateur',
+                            UPDATE_USER_COMMISSION: 'Modification commission',
+                            UPDATE_SETTINGS: 'Modification paramètres',
                             CANCEL_SALE: 'Annulation vente',
                             DELETE_EXPENSE: 'Suppression dépense',
                             CLOSE_DAY: 'Clôture journée',
@@ -568,18 +706,50 @@ export default function Settings() {
                         })()}
                       </td>
                       <td style={{ fontSize: '0.78rem' }}>{log.entity || '—'}</td>
-                      <td style={{ fontSize: '0.72rem', color: 'var(--gray-500)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ fontSize: '0.75rem', color: 'var(--gray-600)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.details}>
                         {(() => {
                           if (!log.details) return '—';
                           try {
                             const d = JSON.parse(log.details);
-                            // Afficher les valeurs clé→valeur en français lisible
+                            if (typeof d !== 'object' || d === null) return String(log.details);
+                            const KEY_LABELS = {
+                              commission_rate: 'Taux commission',
+                              commission_type: 'Type commission',
+                              username: 'Identifiant',
+                              full_name: 'Nom complet',
+                              role: 'Rôle',
+                              is_active: 'Statut',
+                              reason: 'Motif',
+                              name: 'Nom',
+                              date: 'Date',
+                              amount: 'Montant',
+                              total: 'Total',
+                              sale_number: 'N° Vente',
+                              discount: 'Remise',
+                              pool_commission_rate: 'Taux pool',
+                              enable_commissions: 'Commissions activées',
+                            };
+                            const VALUE_TRANSLATIONS = {
+                              percentage: 'Pourcentage (%)',
+                              fixed: 'Fixe',
+                              admin: 'Administrateur',
+                              manager: 'Gestionnaire',
+                              cashier: 'Caissier',
+                            };
                             return Object.entries(d).map(([k, v]) => {
-                              const labels = {
-                                username: 'Utilisateur', date: 'Date',
-                                reason: 'Motif', name: 'Nom',
-                              };
-                              return `${labels[k] || k} : ${v}`;
+                              const keyLabel = KEY_LABELS[k] || k;
+                              let formattedVal = v;
+                              if (typeof v === 'boolean') {
+                                formattedVal = v ? 'Oui' : 'Non';
+                              } else if (VALUE_TRANSLATIONS[String(v)]) {
+                                formattedVal = VALUE_TRANSLATIONS[String(v)];
+                              }
+                              if (k === 'commission_rate' && d.commission_type === 'percentage') {
+                                formattedVal = `${v}%`;
+                              } else if (k === 'commission_rate' && d.commission_type === 'fixed') {
+                                formattedVal = `${Number(v).toLocaleString('fr-FR')} FCFA`;
+                              }
+                              return `${keyLabel} : ${formattedVal}`;
                             }).join(' | ');
                           } catch {
                             return log.details;

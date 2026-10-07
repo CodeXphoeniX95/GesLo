@@ -42,12 +42,77 @@ export default function Reports() {
   const [expensesData, setExpensesData] = useState(null);
   const [commissionsData, setCommissionsData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [recordMsg, setRecordMsg] = useState(null);
 
   const today = new Date().toISOString().slice(0, 10);
   const firstOfMonth = `${today.slice(0, 7)}-01`;
   const [salesFilter, setSalesFilter] = useState({ start_date: firstOfMonth, end_date: today });
   const [expFilter, setExpFilter] = useState({ start_date: firstOfMonth, end_date: today });
   const [commFilter, setCommFilter] = useState({ start_date: firstOfMonth, end_date: today });
+  const [userCustomCommDate, setUserCustomCommDate] = useState(false);
+
+  const getNextDay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const calculateEndDateForPeriod = (startDateStr, periodType = 'monthly') => {
+    if (!startDateStr) return '';
+    const d = new Date(startDateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return '';
+
+    if (periodType === 'weekly') {
+      d.setDate(d.getDate() + 6);
+      return d.toISOString().slice(0, 10);
+    } else if (periodType === 'biweekly') {
+      d.setDate(d.getDate() + 13);
+      return d.toISOString().slice(0, 10);
+    } else if (periodType === 'quarterly') {
+      d.setMonth(d.getMonth() + 3);
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().slice(0, 10);
+    } else if (periodType === 'custom') {
+      return new Date().toISOString().slice(0, 10);
+    } else {
+      // Default: monthly
+      if (d.getDate() === 1) {
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        return lastDay.toISOString().slice(0, 10);
+      } else {
+        d.setMonth(d.getMonth() + 1);
+        d.setDate(d.getDate() - 1);
+        return d.toISOString().slice(0, 10);
+      }
+    }
+  };
+
+  const handleCommStartDateChange = (newStartDate) => {
+    setUserCustomCommDate(true);
+    const periodType = commissionsData?.commission_period_type || 'monthly';
+    const autoEnd = calculateEndDateForPeriod(newStartDate, periodType);
+    setCommFilter({ start_date: newStartDate, end_date: autoEnd || commFilter.end_date });
+  };
+
+  const handleRecordExpenses = async () => {
+    if (!window.confirm('Voulez-vous enregistrer les rémunérations calculées de cette période comme dépenses de personnel / commissions dans la comptabilité ?')) return;
+    try {
+      setRecordMsg(null);
+      const res = await reportsApi.recordCommissionsAsExpenses(commFilter);
+      const closedDate = res.data?.last_commission_closed_date || commFilter.end_date;
+      const nextStart = getNextDay(closedDate);
+      const periodType = commissionsData?.commission_period_type || 'monthly';
+      const autoEnd = calculateEndDateForPeriod(nextStart, periodType);
+      if (nextStart) {
+        setCommFilter({ start_date: nextStart, end_date: autoEnd || today });
+        setUserCustomCommDate(false);
+      }
+      setRecordMsg({ type: 'success', text: res.data?.message || 'Rémunérations enregistrées avec succès.' });
+    } catch (err) {
+      setRecordMsg({ type: 'error', text: err.response?.data?.error || 'Erreur lors de l\'enregistrement.' });
+    }
+  };
 
   useEffect(() => {
     if (tab === 'sales') {
@@ -64,9 +129,19 @@ export default function Reports() {
     }
     if (tab === 'commissions') {
       setLoading(true);
-      reportsApi.getCommissions(commFilter).then((r) => setCommissionsData(r.data)).finally(() => setLoading(false));
+      reportsApi.getCommissions(commFilter).then((r) => {
+        setCommissionsData(r.data);
+        const periodType = r.data?.commission_period_type || 'monthly';
+        if (r.data?.last_commission_closed_date && !userCustomCommDate) {
+          const autoStart = getNextDay(r.data.last_commission_closed_date);
+          const autoEnd = calculateEndDateForPeriod(autoStart, periodType);
+          if (autoStart && (autoStart !== commFilter.start_date || autoEnd !== commFilter.end_date)) {
+            setCommFilter({ start_date: autoStart, end_date: autoEnd || today });
+          }
+        }
+      }).finally(() => setLoading(false));
     }
-  }, [tab, salesFilter, expFilter, commFilter]);
+  }, [tab, salesFilter, expFilter, commFilter, userCustomCommDate]);
 
   return (
     <>
@@ -166,7 +241,7 @@ export default function Reports() {
                     <table>
                       <thead><tr><th>Date</th><th>Ventes</th><th>Total</th></tr></thead>
                       <tbody>
-                        {salesData.by_day.map((row) => (
+                        {(Array.isArray(salesData.by_day) ? salesData.by_day : []).map((row) => (
                           <tr key={row.day}>
                             <td>{row.day}</td><td>{row.count}</td>
                             <td><strong>{row.revenue?.toLocaleString('fr-FR')} FCFA</strong></td>
@@ -214,7 +289,7 @@ export default function Reports() {
                     <tr><th>Produit</th><th>Catégorie</th><th>Unité</th><th>Stock</th><th>Seuil</th></tr>
                   </thead>
                   <tbody>
-                    {stockData.low_stock.map((p) => {
+                    {(Array.isArray(stockData.low_stock) ? stockData.low_stock : []).map((p) => {
                       const isOut = p.stock_quantity <= 0;
                       const rowBg = isOut ? '#fee2e2' : '#fff7ed';
                       const borderColor = isOut ? '#ef4444' : '#f97316';
@@ -334,27 +409,52 @@ export default function Reports() {
       {/* ── Commissions ── */}
       {tab === 'commissions' && !loading && commissionsData && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="filters-bar">
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Du</label>
-              <input className="form-control" type="date" value={commFilter.start_date}
-                onChange={(e) => setCommFilter((f) => ({ ...f, start_date: e.target.value }))} />
+          <div className="filters-bar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Du (Date de début)</label>
+                <input className="form-control" type="date" value={commFilter.start_date}
+                  onChange={(e) => handleCommStartDateChange(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Au (Calculé automatiquement)</label>
+                <input className="form-control" type="date" value={commFilter.end_date}
+                  onChange={(e) => setCommFilter((f) => ({ ...f, end_date: e.target.value }))} />
+              </div>
             </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Au</label>
-              <input className="form-control" type="date" value={commFilter.end_date}
-                onChange={(e) => setCommFilter((f) => ({ ...f, end_date: e.target.value }))} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem' }}>
+              <span className="badge badge-info">
+                Fréquence configurée : {
+                  commissionsData.commission_period_type === 'weekly' ? 'Hebdomadaire (7 jours)' :
+                  commissionsData.commission_period_type === 'biweekly' ? 'Quinzaine (14 jours)' :
+                  commissionsData.commission_period_type === 'quarterly' ? 'Trimestrielle (3 mois)' :
+                  commissionsData.commission_period_type === 'custom' ? 'Libre' : 'Mensuelle (1 mois)'
+                }
+              </span>
             </div>
+
+            {commissionsData.is_admin && (
+              <button className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-end' }} onClick={handleRecordExpenses}>
+                <DollarSign size={14} /> Enregistrer les rémunérations comme dépenses
+              </button>
+            )}
           </div>
+
+          {recordMsg && (
+            <div className={`alert ${recordMsg.type === 'error' ? 'alert-error' : 'alert-success'}`}>
+              {recordMsg.text}
+            </div>
+          )}
 
           {commissionsData.is_admin ? (
             /* Vue Administrateur */
             <>
               <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                <StatCard icon={TrendingUp} label="Bénéfice Net Global" value={fmt(commissionsData.financials?.net_profit)} sub="CA - Achats - Dépenses" colorClass="green" />
-                <StatCard icon={Award} label="Commissions Vendeurs" value={fmt(commissionsData.totals?.total_user_commissions)} colorClass="purple" />
-                <StatCard icon={Users} label="Pool Collectif" value={fmt(commissionsData.totals?.total_pool_commissions)} colorClass="blue" />
-                <StatCard icon={DollarSign} label="Part Boutique / Caisse" value={fmt(commissionsData.totals?.total_caisse_net)} sub="Bénéfice Net Restant" colorClass="cyan" />
+                <StatCard icon={TrendingUp} label="Bénéfice avant rémunérations" value={fmt(commissionsData.financials?.net_profit)} sub="Bénéfice Brut − Dépenses Opérationnelles" colorClass="green" />
+                <StatCard icon={Award} label="Rémunérations Vendeurs" value={fmt(commissionsData.totals?.total_user_commissions)} sub="Chacun son % prédéfini" colorClass="purple" />
+                <StatCard icon={Users} label="Pool Collectif" value={fmt(commissionsData.totals?.total_pool_commissions)} sub="Part % réservée au Pool" colorClass="blue" />
+                <StatCard icon={DollarSign} label="Part Totale de la Boutique" value={fmt(commissionsData.totals?.total_caisse_net)} sub="Solde net restant pour la boutique" colorClass="cyan" />
               </div>
 
               <div className="card">
@@ -365,24 +465,40 @@ export default function Reports() {
                       <tr>
                         <th>Membre</th>
                         <th>Identifiant</th>
-                        <th>Ventes</th>
-                        <th>Chiffre d&apos;affaires</th>
-                        <th>Bénéfice généré</th>
-                        <th>Commission acquise</th>
+                        <th>Taux</th>
+                        <th>Statut Période</th>
+                        <th>Ventes réalisées</th>
+                        <th>Bénéfice Net Global</th>
+                        <th>Rémunération Calculée</th>
                       </tr>
                     </thead>
                     <tbody>
                       {commissionsData.by_user?.length === 0 ? (
-                        <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--gray-400)' }}>Aucune commission enregistrée sur cette période.</td></tr>
+                        <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--gray-400)' }}>Aucune commission enregistrée sur cette période.</td></tr>
                       ) : (
                         commissionsData.by_user?.map((u) => (
                           <tr key={u.user_id}>
                             <td><strong>{u.full_name}</strong></td>
                             <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{u.username}</td>
+                            <td>
+                              <span className="badge badge-info">
+                                {u.commission_type === 'fixed' ? `${u.commission_rate} FCFA/vente` : `${u.commission_rate}%`}
+                              </span>
+                            </td>
+                            <td>
+                              {u.is_eligible ? (
+                                <span className="badge badge-success">Éligible ({u.sale_count} vente{u.sale_count > 1 ? 's' : ''})</span>
+                              ) : (
+                                <span className="badge badge-gray">Inéligible (0 vente)</span>
+                              )}
+                            </td>
                             <td>{u.sale_count}</td>
-                            <td>{fmt(u.total_sales)}</td>
-                            <td>{fmt(u.total_profit)}</td>
-                            <td><strong style={{ color: 'var(--primary)' }}>{fmt(u.total_commission)}</strong></td>
+                            <td>{fmt(u.total_profit ?? u.user_net_profit ?? commissionsData.financials?.net_profit ?? 0)}</td>
+                            <td>
+                              <strong style={{ color: u.is_eligible ? 'var(--primary)' : 'var(--gray-400)' }}>
+                                {u.is_eligible ? fmt(u.total_commission) : '0 FCFA (Inéligible)'}
+                              </strong>
+                            </td>
                           </tr>
                         ))
                       )}

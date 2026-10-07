@@ -19,6 +19,8 @@ export function runMigrations() {
     try { db.exec('ALTER TABLE business_settings ADD COLUMN pool_commission_rate REAL DEFAULT 0'); } catch {}
     try { db.exec('ALTER TABLE users ADD COLUMN commission_rate REAL DEFAULT 0'); } catch {}
     try { db.exec("ALTER TABLE users ADD COLUMN commission_type TEXT DEFAULT 'percentage'"); } catch {}
+    try { db.exec("ALTER TABLE business_settings ADD COLUMN commission_period_type TEXT DEFAULT 'monthly'"); } catch {}
+    try { db.exec('ALTER TABLE business_settings ADD COLUMN last_commission_closed_date TEXT'); } catch {}
 
     seedInitialData(db);
     console.log('Migrations exécutées avec succès.');
@@ -59,6 +61,6 @@ function seedInitialData(db) {  // Rôles
   const insertExpCat = db.prepare(
     'INSERT OR IGNORE INTO expense_categories (name) VALUES (?)'
   );
-  ['Transport', 'Électricité', 'Eau', 'Loyer', 'Salaire',
+  ['Transport', 'Électricité', 'Eau', 'Loyer', 'Salaire', 'Commissions / Rémunérations',
     'Matériel', 'Entretien', 'Communication', 'Autres'].forEach(c => insertExpCat.run(c));
 }

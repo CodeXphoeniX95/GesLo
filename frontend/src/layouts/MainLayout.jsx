@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, ShieldCheck, AlertTriangle } from 'lucide-react';
 import Sidebar from './Sidebar';
+import LicenseLockModal from '../components/LicenseLockModal';
+import { licenseApi } from '../services/api';
 
 const TITLES = {
   '/': 'Tableau de bord',
@@ -24,6 +26,19 @@ export default function MainLayout() {
   const { pathname } = useLocation();
   const title = TITLES[pathname] || 'GesLo';
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [licenseState, setLicenseState] = useState(null);
+
+  const checkLicense = useCallback(() => {
+    licenseApi.getStatus()
+      .then((res) => setLicenseState(res.data))
+      .catch(() => setLicenseState({ is_valid: false, status: 'unlicensed', message: 'Erreur lors du contrôle de licence.' }));
+  }, []);
+
+  useEffect(() => {
+    checkLicense();
+    const interval = setInterval(checkLicense, 60000); // Contrôle toutes les minutes
+    return () => clearInterval(interval);
+  }, [checkLicense]);
 
   const toggleMobile = () => setMobileOpen(!mobileOpen);
   const closeMobile = () => setMobileOpen(false);
@@ -50,12 +65,25 @@ export default function MainLayout() {
             </button>
             <h2 className="header-title">{title}</h2>
           </div>
+
+          {/* Badge statut licence dans le header */}
+          {licenseState && licenseState.is_valid && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: licenseState.days_left <= 30 ? 'var(--warning-700)' : 'var(--success-700)', background: licenseState.days_left <= 30 ? 'var(--warning-50)' : 'var(--success-50)', padding: '4px 10px', borderRadius: 20, border: `1px solid ${licenseState.days_left <= 30 ? '#fde68a' : '#bbf7d0'}` }}>
+              {licenseState.days_left <= 30 ? <AlertTriangle size={13} /> : <ShieldCheck size={13} />}
+              <span>Licence 1 An : <strong>{licenseState.days_left} jour{licenseState.days_left > 1 ? 's' : ''} restant{licenseState.days_left > 1 ? 's' : ''}</strong></span>
+            </div>
+          )}
         </header>
 
         <main className="page-content" id="main-content">
           <Outlet />
         </main>
       </div>
+
+      {/* Modal de verrouillage si la licence est invalide ou expirée */}
+      {licenseState && !licenseState.is_valid && (
+        <LicenseLockModal licenseState={licenseState} onActivated={checkLicense} />
+      )}
     </div>
   );
 }
